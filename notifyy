@@ -1,461 +1,657 @@
 --[[
-    Custom Roblox Notification System for Synapse X
-    Author: Your Name
-    Version: 1.0
+    Neverlose.cc Inspired UI Library for Roblox
+    Created by Cascade AI
 ]]
 
-local NotificationSystem = {}
-NotificationSystem.__index = NotificationSystem
+local Neverlose = {}
+Neverlose.__index = Neverlose
 
--- Configuration
-local config = {
-    defaultDuration = 5,
-    maxNotifications = 5,
-    spacing = 10,
-    animationSpeed = 0.3,
-    defaultWidth = 300,
-    defaultHeight = 80,
-    cornerRadius = UDim.new(0, 8),
-    font = Enum.Font.SourceSansBold,
-    textSize = 14,
-    defaultPosition = UDim2.new(1, -20, 0, 20), -- Top right
-    defaultAnchorPoint = Vector2.new(1, 0),
-    defaultSound = "rbxassetid://6518811702",
-    themes = {
-        default = {
-            backgroundColor = Color3.fromRGB(45, 45, 45),
-            textColor = Color3.fromRGB(255, 255, 255),
-            borderColor = Color3.fromRGB(60, 60, 60),
-            iconColor = Color3.fromRGB(255, 255, 255),
-            progressBarColor = Color3.fromRGB(80, 80, 80),
-            progressBarFillColor = Color3.fromRGB(100, 100, 100)
-        },
-        success = {
-            backgroundColor = Color3.fromRGB(40, 100, 60),
-            textColor = Color3.fromRGB(255, 255, 255),
-            borderColor = Color3.fromRGB(50, 120, 70),
-            iconColor = Color3.fromRGB(200, 255, 200),
-            progressBarColor = Color3.fromRGB(30, 80, 50),
-            progressBarFillColor = Color3.fromRGB(60, 160, 90)
-        },
-        error = {
-            backgroundColor = Color3.fromRGB(150, 40, 40),
-            textColor = Color3.fromRGB(255, 255, 255),
-            borderColor = Color3.fromRGB(180, 50, 50),
-            iconColor = Color3.fromRGB(255, 200, 200),
-            progressBarColor = Color3.fromRGB(120, 30, 30),
-            progressBarFillColor = Color3.fromRGB(200, 60, 60)
-        },
-        warning = {
-            backgroundColor = Color3.fromRGB(150, 120, 30),
-            textColor = Color3.fromRGB(255, 255, 255),
-            borderColor = Color3.fromRGB(180, 140, 40),
-            iconColor = Color3.fromRGB(255, 240, 180),
-            progressBarColor = Color3.fromRGB(120, 100, 20),
-            progressBarFillColor = Color3.fromRGB(200, 160, 40)
-        },
-        info = {
-            backgroundColor = Color3.fromRGB(40, 80, 150),
-            textColor = Color3.fromRGB(255, 255, 255),
-            borderColor = Color3.fromRGB(50, 100, 180),
-            iconColor = Color3.fromRGB(200, 220, 255),
-            progressBarColor = Color3.fromRGB(30, 60, 120),
-            progressBarFillColor = Color3.fromRGB(60, 120, 200)
-        },
-        custom = {
-            backgroundColor = Color3.fromRGB(80, 40, 120),
-            textColor = Color3.fromRGB(255, 255, 255),
-            borderColor = Color3.fromRGB(100, 50, 150),
-            iconColor = Color3.fromRGB(220, 200, 255),
-            progressBarColor = Color3.fromRGB(60, 30, 90),
-            progressBarFillColor = Color3.fromRGB(120, 60, 180)
-        }
-    },
-    icons = {
-        default = "rbxassetid://7072718185", -- Bell icon
-        success = "rbxassetid://7072707588", -- Checkmark icon
-        error = "rbxassetid://7072725342", -- X icon
-        warning = "rbxassetid://7072724538", -- Warning icon
-        info = "rbxassetid://7072717857", -- Info icon
-        custom = "rbxassetid://7072706796" -- Star icon
-    }
+-- Services
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local TextService = game:GetService("TextService")
+local CoreGui = game:GetService("CoreGui")
+
+-- Constants
+local PLAYER = Players.LocalPlayer
+local MOUSE = PLAYER:GetMouse()
+local TWEEN_INFO = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+-- Theme (Neverlose.cc inspired)
+local Theme = {
+    Background = Color3.fromRGB(25, 25, 25),
+    Accent = Color3.fromRGB(113, 93, 255), -- Neverlose purple
+    SecondaryAccent = Color3.fromRGB(72, 52, 212),
+    LightContrast = Color3.fromRGB(30, 30, 30),
+    DarkContrast = Color3.fromRGB(20, 20, 20),
+    TextColor = Color3.fromRGB(255, 255, 255),
+    SubTextColor = Color3.fromRGB(180, 180, 180),
+    TabColor = Color3.fromRGB(30, 30, 30),
+    ElementColor = Color3.fromRGB(35, 35, 35),
+    ElementBorder = Color3.fromRGB(40, 40, 40),
+    SelectedTabColor = Color3.fromRGB(113, 93, 255),
+    ButtonColor = Color3.fromRGB(35, 35, 35),
+    ButtonHover = Color3.fromRGB(40, 40, 40),
+    ToggleOn = Color3.fromRGB(113, 93, 255),
+    ToggleOff = Color3.fromRGB(60, 60, 60),
+    SliderBackground = Color3.fromRGB(30, 30, 30),
+    SliderFill = Color3.fromRGB(113, 93, 255),
+    DropdownBackground = Color3.fromRGB(25, 25, 25),
+    NotificationBackground = Color3.fromRGB(25, 25, 25),
+    NotificationBorder = Color3.fromRGB(40, 40, 40),
+    NotificationSuccess = Color3.fromRGB(0, 255, 140),
+    NotificationError = Color3.fromRGB(255, 0, 68),
+    NotificationInfo = Color3.fromRGB(113, 93, 255),
+    NotificationWarning = Color3.fromRGB(255, 184, 0),
+    SectionBackground = Color3.fromRGB(30, 30, 30),
+    InputFieldBackground = Color3.fromRGB(35, 35, 35),
+    DividerColor = Color3.fromRGB(50, 50, 50),
+    ProgressBarBackground = Color3.fromRGB(30, 30, 30),
+    ProgressBarFill = Color3.fromRGB(113, 93, 255),
+    ConsoleBackground = Color3.fromRGB(20, 20, 20),
+    ScrollBarBackground = Color3.fromRGB(30, 30, 30),
+    ScrollBarFill = Color3.fromRGB(45, 45, 45)
 }
 
--- Variables
-local activeNotifications = {}
-local screenGui = nil
-
--- Initialize the notification system
-function NotificationSystem.Init()
-    -- Create ScreenGui if it doesn't exist
-    if not screenGui then
-        screenGui = Instance.new("ScreenGui")
-        screenGui.Name = "SynapseNotificationSystem"
-        screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-        screenGui.ResetOnSpawn = false
-        screenGui.Parent = game:GetService("CoreGui")
-        
-        -- Create a container for notifications
-        local container = Instance.new("Frame")
-        container.Name = "NotificationContainer"
-        container.BackgroundTransparency = 1
-        container.Size = UDim2.new(1, 0, 1, 0)
-        container.Position = UDim2.new(0, 0, 0, 0)
-        container.Parent = screenGui
-    end
-    
-    return NotificationSystem
-end
-
--- Update notification positions
-function NotificationSystem.UpdatePositions()
-    local yOffset = 0
-    
-    for i, notification in ipairs(activeNotifications) do
-        local targetPosition = UDim2.new(
-            config.defaultPosition.X.Scale,
-            config.defaultPosition.X.Offset,
-            config.defaultPosition.Y.Scale,
-            config.defaultPosition.Y.Offset + yOffset
-        )
-        
-        -- Animate to new position
-        notification.frame:TweenPosition(
-            targetPosition,
-            Enum.EasingDirection.Out,
-            Enum.EasingStyle.Quart,
-            config.animationSpeed,
-            true
-        )
-        
-        yOffset = yOffset + notification.frame.AbsoluteSize.Y + config.spacing
+-- Utility Functions
+local function Create(instanceType)
+    return function(properties)
+        local instance = Instance.new(instanceType)
+        for property, value in pairs(properties) do
+            if property ~= "Parent" then
+                instance[property] = value
+            end
+        end
+        if properties.Parent then
+            instance.Parent = properties.Parent
+        end
+        return instance
     end
 end
 
--- Create a new notification
-function NotificationSystem.Create(options)
-    options = options or {}
-    
-    -- Default options
-    local title = options.title or "Notification"
-    local message = options.message or ""
-    local duration = options.duration or config.defaultDuration
-    local theme = options.theme or "default"
-    local icon = options.icon or config.icons[theme] or config.icons.default
-    local sound = options.sound or config.defaultSound
-    local callback = options.callback
-    local width = options.width or config.defaultWidth
-    local height = options.height or config.defaultHeight
-    
-    -- Get theme colors
-    local themeColors = config.themes[theme] or config.themes.default
-    
-    -- Create notification frame
-    local notificationFrame = Instance.new("Frame")
-    notificationFrame.Name = "Notification_" .. tostring(#activeNotifications + 1)
-    notificationFrame.Size = UDim2.new(0, width, 0, height)
-    notificationFrame.Position = UDim2.new(
-        config.defaultPosition.X.Scale + 0.2,
-        config.defaultPosition.X.Offset,
-        config.defaultPosition.Y.Scale,
-        config.defaultPosition.Y.Offset
+local function CalculateTextSize(text, font, size, bounds)
+    return TextService:GetTextSize(text, size, font, bounds)
+end
+
+local function Tween(instance, properties, duration, easingStyle, easingDirection)
+    local info = TweenInfo.new(
+        duration or 0.2,
+        easingStyle or Enum.EasingStyle.Quad,
+        easingDirection or Enum.EasingDirection.Out
     )
-    notificationFrame.AnchorPoint = config.defaultAnchorPoint
-    notificationFrame.BackgroundColor3 = themeColors.backgroundColor
-    notificationFrame.BorderSizePixel = 0
-    notificationFrame.BackgroundTransparency = 0
-    notificationFrame.Parent = screenGui.NotificationContainer
+    local tween = TweenService:Create(instance, info, properties)
+    tween:Play()
+    return tween
+end
+
+local function Ripple(button)
+    local ripple = Create("Frame")({
+        Name = "Ripple",
+        Parent = button,
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BackgroundTransparency = 0.7,
+        BorderSizePixel = 0,
+        Position = UDim2.new(0, MOUSE.X - button.AbsolutePosition.X, 0, MOUSE.Y - button.AbsolutePosition.Y),
+        Size = UDim2.new(0, 0, 0, 0),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        ZIndex = button.ZIndex + 1
+    })
     
-    -- Add corner radius
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = config.cornerRadius
-    corner.Parent = notificationFrame
+    local corner = Create("UICorner")({
+        CornerRadius = UDim.new(1, 0),
+        Parent = ripple
+    })
     
-    -- Add border
-    local border = Instance.new("UIStroke")
-    border.Color = themeColors.borderColor
-    border.Thickness = 1
-    border.Parent = notificationFrame
+    local maxSize = math.max(button.AbsoluteSize.X, button.AbsoluteSize.Y) * 2
+    Tween(ripple, {Size = UDim2.new(0, maxSize, 0, maxSize), BackgroundTransparency = 1}, 0.5)
     
-    -- Add icon
-    local iconImage = Instance.new("ImageLabel")
-    iconImage.Name = "Icon"
-    iconImage.Size = UDim2.new(0, height - 30, 0, height - 30)
-    iconImage.Position = UDim2.new(0, 15, 0.5, 0)
-    iconImage.AnchorPoint = Vector2.new(0, 0.5)
-    iconImage.BackgroundTransparency = 1
-    iconImage.Image = icon
-    iconImage.ImageColor3 = themeColors.iconColor
-    iconImage.Parent = notificationFrame
+    task.delay(0.5, function()
+        ripple:Destroy()
+    end)
+end
+
+-- Main Library
+function Neverlose.new(title, toggleKey)
+    local library = setmetatable({
+        title = title or "Neverlose.cc",
+        toggleKey = toggleKey or Enum.KeyCode.Insert,
+        flags = {},
+        open = true,
+        tabs = {},
+        activeTab = nil,
+        dragging = false,
+        dragStart = nil,
+        startPos = nil,
+        notifications = {},
+        connections = {}
+    }, Neverlose)
     
-    -- Add title
-    local titleLabel = Instance.new("TextLabel")
-    titleLabel.Name = "Title"
-    titleLabel.Size = UDim2.new(1, -80, 0, 25)
-    titleLabel.Position = UDim2.new(0, 65, 0, 10)
-    titleLabel.BackgroundTransparency = 1
-    titleLabel.Text = title
-    titleLabel.TextColor3 = themeColors.textColor
-    titleLabel.TextSize = config.textSize + 2
-    titleLabel.Font = config.font
-    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    titleLabel.TextWrapped = true
-    titleLabel.Parent = notificationFrame
+    -- Create UI
+    library:CreateUI()
     
-    -- Add message
-    local messageLabel = Instance.new("TextLabel")
-    messageLabel.Name = "Message"
-    messageLabel.Size = UDim2.new(1, -80, 1, -45)
-    messageLabel.Position = UDim2.new(0, 65, 0, 35)
-    messageLabel.BackgroundTransparency = 1
-    messageLabel.Text = message
-    messageLabel.TextColor3 = themeColors.textColor
-    messageLabel.TextSize = config.textSize
-    messageLabel.Font = Enum.Font.SourceSans
-    messageLabel.TextXAlignment = Enum.TextXAlignment.Left
-    messageLabel.TextYAlignment = Enum.TextYAlignment.Top
-    messageLabel.TextWrapped = true
-    messageLabel.Parent = notificationFrame
+    -- Toggle keybind
+    table.insert(library.connections, UserInputService.InputBegan:Connect(function(input)
+        if input.KeyCode == library.toggleKey then
+            library:Toggle()
+        end
+    end))
     
-    -- Add progress bar
-    local progressBarBackground = Instance.new("Frame")
-    progressBarBackground.Name = "ProgressBarBackground"
-    progressBarBackground.Size = UDim2.new(1, 0, 0, 4)
-    progressBarBackground.Position = UDim2.new(0, 0, 1, -4)
-    progressBarBackground.BackgroundColor3 = themeColors.progressBarColor
-    progressBarBackground.BorderSizePixel = 0
-    progressBarBackground.Parent = notificationFrame
+    return library
+end
+
+function Neverlose:CreateUI()
+    -- Main GUI
+    self.gui = Create("ScreenGui")({
+        Name = "NeverloseUI",
+        Parent = CoreGui,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+        ResetOnSpawn = false
+    })
     
-    local progressBarFill = Instance.new("Frame")
-    progressBarFill.Name = "ProgressBarFill"
-    progressBarFill.Size = UDim2.new(1, 0, 1, 0)
-    progressBarFill.BackgroundColor3 = themeColors.progressBarFillColor
-    progressBarFill.BorderSizePixel = 0
-    progressBarFill.Parent = progressBarBackground
+    -- Main Container
+    self.main = Create("Frame")({
+        Name = "Main",
+        Parent = self.gui,
+        BackgroundColor3 = Theme.Background,
+        BorderSizePixel = 0,
+        Position = UDim2.new(0.5, -350, 0.5, -250),
+        Size = UDim2.new(0, 700, 0, 500),
+        ClipsDescendants = true
+    })
     
-    -- Add corner radius to progress bar
-    local progressCorner = Instance.new("UICorner")
-    progressCorner.CornerRadius = UDim.new(0, 2)
-    progressCorner.Parent = progressBarBackground
+    -- Shadow
+    local shadow = Create("ImageLabel")({
+        Name = "Shadow",
+        Parent = self.main,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, -15, 0, -15),
+        Size = UDim2.new(1, 30, 1, 30),
+        ZIndex = 0,
+        Image = "rbxassetid://5554236805",
+        ImageColor3 = Color3.fromRGB(0, 0, 0),
+        ScaleType = Enum.ScaleType.Slice,
+        SliceCenter = Rect.new(23, 23, 277, 277)
+    })
     
-    local progressFillCorner = Instance.new("UICorner")
-    progressFillCorner.CornerRadius = UDim.new(0, 2)
-    progressFillCorner.Parent = progressBarFill
+    -- Rounded Corners
+    local corner = Create("UICorner")({
+        CornerRadius = UDim.new(0, 6),
+        Parent = self.main
+    })
     
-    -- Add close button
-    local closeButton = Instance.new("TextButton")
-    closeButton.Name = "CloseButton"
-    closeButton.Size = UDim2.new(0, 20, 0, 20)
-    closeButton.Position = UDim2.new(1, -15, 0, 10)
-    closeButton.BackgroundTransparency = 1
-    closeButton.Text = "×"
-    closeButton.TextColor3 = themeColors.textColor
-    closeButton.TextSize = 20
-    closeButton.Font = Enum.Font.SourceSansBold
-    closeButton.Parent = notificationFrame
+    -- Title Bar
+    self.titleBar = Create("Frame")({
+        Name = "TitleBar",
+        Parent = self.main,
+        BackgroundColor3 = Theme.DarkContrast,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 40)
+    })
     
-    -- Play sound
-    if sound then
-        local soundInstance = Instance.new("Sound")
-        soundInstance.SoundId = sound
-        soundInstance.Volume = 0.5
-        soundInstance.Parent = notificationFrame
-        soundInstance:Play()
-        
-        game:GetService("Debris"):AddItem(soundInstance, 2)
+    local titleCorner = Create("UICorner")({
+        CornerRadius = UDim.new(0, 6),
+        Parent = self.titleBar
+    })
+    
+    -- Fix corner overlap
+    local titleBarFix = Create("Frame")({
+        Name = "TitleBarFix",
+        Parent = self.titleBar,
+        BackgroundColor3 = Theme.DarkContrast,
+        BorderSizePixel = 0,
+        Position = UDim2.new(0, 0, 1, -6),
+        Size = UDim2.new(1, 0, 0, 6)
+    })
+    
+    -- Logo
+    self.logo = Create("ImageLabel")({
+        Name = "Logo",
+        Parent = self.titleBar,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 10, 0.5, -15),
+        Size = UDim2.new(0, 30, 0, 30),
+        Image = "rbxassetid://6031251532", -- Replace with your logo
+        ImageColor3 = Theme.Accent
+    })
+    
+    -- Title
+    self.titleText = Create("TextLabel")({
+        Name = "Title",
+        Parent = self.titleBar,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 50, 0, 0),
+        Size = UDim2.new(1, -100, 1, 0),
+        Font = Enum.Font.GothamBold,
+        Text = self.title,
+        TextColor3 = Theme.TextColor,
+        TextSize = 16,
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+    
+    -- Version
+    self.versionText = Create("TextLabel")({
+        Name = "Version",
+        Parent = self.titleBar,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 50, 0.5, 0),
+        Size = UDim2.new(0, 100, 0, 20),
+        Font = Enum.Font.Gotham,
+        Text = "v1.0",
+        TextColor3 = Theme.SubTextColor,
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+    
+    -- Close Button
+    self.closeButton = Create("TextButton")({
+        Name = "CloseButton",
+        Parent = self.titleBar,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(1, -30, 0.5, -10),
+        Size = UDim2.new(0, 20, 0, 20),
+        Font = Enum.Font.GothamBold,
+        Text = "×",
+        TextColor3 = Theme.TextColor,
+        TextSize = 20
+    })
+    
+    -- Minimize Button
+    self.minimizeButton = Create("TextButton")({
+        Name = "MinimizeButton",
+        Parent = self.titleBar,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(1, -60, 0.5, -10),
+        Size = UDim2.new(0, 20, 0, 20),
+        Font = Enum.Font.GothamBold,
+        Text = "-",
+        TextColor3 = Theme.TextColor,
+        TextSize = 20
+    })
+    
+    -- Tab Container
+    self.tabContainer = Create("Frame")({
+        Name = "TabContainer",
+        Parent = self.main,
+        BackgroundColor3 = Theme.TabColor,
+        BorderSizePixel = 0,
+        Position = UDim2.new(0, 0, 0, 40),
+        Size = UDim2.new(0, 180, 1, -40)
+    })
+    
+    -- Fix corner overlap
+    local tabContainerFix = Create("Frame")({
+        Name = "TabContainerFix",
+        Parent = self.tabContainer,
+        BackgroundColor3 = Theme.TabColor,
+        BorderSizePixel = 0,
+        Position = UDim2.new(1, -6, 0, 0),
+        Size = UDim2.new(0, 6, 1, 0),
+        ZIndex = 2
+    })
+    
+    -- User Info
+    self.userInfo = Create("Frame")({
+        Name = "UserInfo",
+        Parent = self.tabContainer,
+        BackgroundColor3 = Theme.DarkContrast,
+        BorderSizePixel = 0,
+        Position = UDim2.new(0, 0, 0, 0),
+        Size = UDim2.new(1, 0, 0, 80)
+    })
+    
+    -- User Avatar
+    self.userAvatar = Create("ImageLabel")({
+        Name = "UserAvatar",
+        Parent = self.userInfo,
+        BackgroundColor3 = Theme.Background,
+        BorderSizePixel = 0,
+        Position = UDim2.new(0, 10, 0, 10),
+        Size = UDim2.new(0, 60, 0, 60),
+        Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
+    })
+    
+    local avatarCorner = Create("UICorner")({
+        CornerRadius = UDim.new(1, 0),
+        Parent = self.userAvatar
+    })
+    
+    -- User Name
+    self.userName = Create("TextLabel")({
+        Name = "UserName",
+        Parent = self.userInfo,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 80, 0, 15),
+        Size = UDim2.new(1, -90, 0, 20),
+        Font = Enum.Font.GothamBold,
+        Text = PLAYER.Name,
+        TextColor3 = Theme.TextColor,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+    
+    -- User Status
+    self.userStatus = Create("TextLabel")({
+        Name = "UserStatus",
+        Parent = self.userInfo,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 80, 0, 35),
+        Size = UDim2.new(1, -90, 0, 20),
+        Font = Enum.Font.Gotham,
+        Text = "Premium User",
+        TextColor3 = Theme.Accent,
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+    
+    -- User Subscription
+    self.userSubscription = Create("TextLabel")({
+        Name = "UserSubscription",
+        Parent = self.userInfo,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 80, 0, 55),
+        Size = UDim2.new(1, -90, 0, 20),
+        Font = Enum.Font.Gotham,
+        Text = "Lifetime",
+        TextColor3 = Theme.SubTextColor,
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+    
+    -- Get user avatar
+    pcall(function()
+        local userId = PLAYER.UserId
+        local thumbType = Enum.ThumbnailType.HeadShot
+        local thumbSize = Enum.ThumbnailSize.Size420x420
+        local content = Players:GetUserThumbnailAsync(userId, thumbType, thumbSize)
+        self.userAvatar.Image = content
+    end)
+    
+    -- Tab List
+    self.tabList = Create("ScrollingFrame")({
+        Name = "TabList",
+        Parent = self.tabContainer,
+        Active = true,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 0, 0, 90),
+        Size = UDim2.new(1, 0, 1, -90),
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        ScrollBarThickness = 2,
+        ScrollBarImageColor3 = Theme.ScrollBarFill
+    })
+    
+    local tabListLayout = Create("UIListLayout")({
+        Parent = self.tabList,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 5)
+    })
+    
+    local tabListPadding = Create("UIPadding")({
+        Parent = self.tabList,
+        PaddingLeft = UDim.new(0, 10),
+        PaddingRight = UDim.new(0, 10),
+        PaddingTop = UDim.new(0, 10),
+        PaddingBottom = UDim.new(0, 10)
+    })
+    
+    -- Content Container
+    self.contentContainer = Create("Frame")({
+        Name = "ContentContainer",
+        Parent = self.main,
+        BackgroundColor3 = Theme.Background,
+        BorderSizePixel = 0,
+        Position = UDim2.new(0, 180, 0, 40),
+        Size = UDim2.new(1, -180, 1, -40),
+        ClipsDescendants = true
+    })
+    
+    -- Notification Container
+    self.notificationContainer = Create("Frame")({
+        Name = "NotificationContainer",
+        Parent = self.gui,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(1, -330, 0, 20),
+        Size = UDim2.new(0, 300, 1, -40),
+        ClipsDescendants = false
+    })
+    
+    local notificationLayout = Create("UIListLayout")({
+        Parent = self.notificationContainer,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        VerticalAlignment = Enum.VerticalAlignment.Top,
+        Padding = UDim.new(0, 5)
+    })
+    
+    -- Make the window draggable
+    self:MakeDraggable(self.titleBar)
+    
+    -- Close button functionality
+    self.closeButton.MouseButton1Click:Connect(function()
+        self.gui:Destroy()
+        for _, connection in pairs(self.connections) do
+            connection:Disconnect()
+        end
+        self.connections = {}
+    end)
+    
+    -- Minimize button functionality
+    self.minimizeButton.MouseButton1Click:Connect(function()
+        self:Toggle()
+    end)
+end
+
+function Neverlose:MakeDraggable(frame)
+    local dragging = false
+    local dragInput, dragStart, startPos
+    
+    local function update(input)
+        local delta = input.Position - dragStart
+        self.main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
     
-    -- Create notification object
-    local notification = {
-        frame = notificationFrame,
-        progressBar = progressBarFill,
-        duration = duration,
-        callback = callback,
-        startTime = tick(),
-        closing = false
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = self.main.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    frame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            update(input)
+        end
+    end)
+end
+
+function Neverlose:Toggle()
+    self.open = not self.open
+    if self.open then
+        self.main:TweenSize(UDim2.new(0, 700, 0, 500), Enum.EasingDirection.Out, Enum.EasingStyle.Quart, 0.3, true)
+    else
+        self.main:TweenSize(UDim2.new(0, 700, 0, 40), Enum.EasingDirection.Out, Enum.EasingStyle.Quart, 0.3, true)
+    end
+end
+
+function Neverlose:Notify(title, text, duration, notificationType)
+    notificationType = notificationType or "info"
+    duration = duration or 5
+    
+    local typeColors = {
+        success = Theme.NotificationSuccess,
+        error = Theme.NotificationError,
+        info = Theme.NotificationInfo,
+        warning = Theme.NotificationWarning
     }
     
-    -- Add to active notifications
-    table.insert(activeNotifications, notification)
+    local typeIcons = {
+        success = "✓",
+        error = "✗",
+        info = "i",
+        warning = "!"
+    }
     
-    -- Update positions
-    NotificationSystem.UpdatePositions()
+    local notificationColor = typeColors[notificationType] or Theme.NotificationInfo
+    local notificationIcon = typeIcons[notificationType] or "i"
     
-    -- Animate in
-    notificationFrame.Position = UDim2.new(
-        config.defaultPosition.X.Scale + 0.2,
-        config.defaultPosition.X.Offset,
-        config.defaultPosition.Y.Scale,
-        config.defaultPosition.Y.Offset
-    )
+    -- Notification Frame
+    local notification = Create("Frame")({
+        Name = "Notification",
+        Parent = self.notificationContainer,
+        BackgroundColor3 = Theme.NotificationBackground,
+        BorderSizePixel = 0,
+        Position = UDim2.new(1, 0, 0, 0),
+        Size = UDim2.new(1, 0, 0, 80),
+        ClipsDescendants = true
+    })
     
-    notificationFrame:TweenPosition(
-        UDim2.new(
-            config.defaultPosition.X.Scale,
-            config.defaultPosition.X.Offset,
-            config.defaultPosition.Y.Scale,
-            config.defaultPosition.Y.Offset
-        ),
-        Enum.EasingDirection.Out,
-        Enum.EasingStyle.Quart,
-        config.animationSpeed,
-        true
-    )
+    local notificationCorner = Create("UICorner")({
+        CornerRadius = UDim.new(0, 4),
+        Parent = notification
+    })
     
-    -- Handle close button
+    -- Notification Border
+    local border = Create("Frame")({
+        Name = "Border",
+        Parent = notification,
+        BackgroundColor3 = notificationColor,
+        BorderSizePixel = 0,
+        Position = UDim2.new(0, 0, 0, 0),
+        Size = UDim2.new(0, 4, 1, 0)
+    })
+    
+    local borderCorner = Create("UICorner")({
+        CornerRadius = UDim.new(0, 4),
+        Parent = border
+    })
+    
+    -- Icon Container
+    local iconContainer = Create("Frame")({
+        Name = "IconContainer",
+        Parent = notification,
+        BackgroundColor3 = notificationColor,
+        BorderSizePixel = 0,
+        Position = UDim2.new(0, 15, 0, 15),
+        Size = UDim2.new(0, 30, 0, 30)
+    })
+    
+    local iconCorner = Create("UICorner")({
+        CornerRadius = UDim.new(1, 0),
+        Parent = iconContainer
+    })
+    
+    -- Icon
+    local icon = Create("TextLabel")({
+        Name = "Icon",
+        Parent = iconContainer,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, 0),
+        Font = Enum.Font.GothamBold,
+        Text = notificationIcon,
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        TextSize = 16
+    })
+    
+    -- Title
+    local titleLabel = Create("TextLabel")({
+        Name = "Title",
+        Parent = notification,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 55, 0, 10),
+        Size = UDim2.new(1, -65, 0, 20),
+        Font = Enum.Font.GothamBold,
+        Text = title,
+        TextColor3 = Theme.TextColor,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+    
+    -- Text
+    local textLabel = Create("TextLabel")({
+        Name = "Text",
+        Parent = notification,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 55, 0, 30),
+        Size = UDim2.new(1, -65, 0, 40),
+        Font = Enum.Font.Gotham,
+        Text = text,
+        TextColor3 = Theme.SubTextColor,
+        TextSize = 12,
+        TextWrapped = true,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top
+    })
+    
+    -- Progress Bar
+    local progressBar = Create("Frame")({
+        Name = "ProgressBar",
+        Parent = notification,
+        BackgroundColor3 = Theme.ProgressBarBackground,
+        BorderSizePixel = 0,
+        Position = UDim2.new(0, 0, 1, -2),
+        Size = UDim2.new(1, 0, 0, 2)
+    })
+    
+    local progressFill = Create("Frame")({
+        Name = "ProgressFill",
+        Parent = progressBar,
+        BackgroundColor3 = notificationColor,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 1, 0)
+    })
+    
+    -- Close Button
+    local closeButton = Create("TextButton")({
+        Name = "CloseButton",
+        Parent = notification,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(1, -25, 0, 5),
+        Size = UDim2.new(0, 20, 0, 20),
+        Font = Enum.Font.GothamBold,
+        Text = "×",
+        TextColor3 = Theme.SubTextColor,
+        TextSize = 14
+    })
+    
+    -- Animation
+    notification.Position = UDim2.new(1, 0, 0, 0)
+    Tween(notification, {Position = UDim2.new(0, 0, 0, 0)}, 0.3, Enum.EasingStyle.Quint)
+    
+    -- Progress Bar Animation
+    Tween(progressFill, {Size = UDim2.new(0, 0, 1, 0)}, duration, Enum.EasingStyle.Linear)
+    
+    -- Close Button Functionality
     closeButton.MouseButton1Click:Connect(function()
-        NotificationSystem.Close(notification)
+        Tween(notification, {Position = UDim2.new(1, 0, 0, 0)}, 0.3, Enum.EasingStyle.Quint)
+        task.delay(0.3, function()
+            notification:Destroy()
+        end)
     end)
     
-    -- Make notification clickable
-    notificationFrame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 and notification.callback then
-            notification.callback()
-            NotificationSystem.Close(notification)
+    -- Auto Close
+    task.delay(duration, function()
+        if notification and notification.Parent then
+            Tween(notification, {Position = UDim2.new(1, 0, 0, 0)}, 0.3, Enum.EasingStyle.Quint)
+            task.delay(0.3, function()
+                if notification and notification.Parent then
+                    notification:Destroy()
+                end
+            end)
         end
     end)
-    
-    -- Start progress bar animation
-    spawn(function()
-        local startTime = tick()
-        
-        while tick() - startTime < duration and not notification.closing do
-            local elapsed = tick() - startTime
-            local progress = 1 - (elapsed / duration)
-            
-            progressBarFill.Size = UDim2.new(progress, 0, 1, 0)
-            
-            wait(0.03)
-        end
-        
-        if not notification.closing then
-            NotificationSystem.Close(notification)
-        end
-    end)
-    
-    -- Limit max notifications
-    if #activeNotifications > config.maxNotifications then
-        NotificationSystem.Close(activeNotifications[1])
-    end
     
     return notification
 end
-
--- Close a notification
-function NotificationSystem.Close(notification)
-    if notification.closing then return end
-    
-    notification.closing = true
-    
-    -- Find index
-    local index = table.find(activeNotifications, notification)
-    if not index then return end
-    
-    -- Remove from active notifications
-    table.remove(activeNotifications, index)
-    
-    -- Animate out
-    notification.frame:TweenPosition(
-        UDim2.new(
-            config.defaultPosition.X.Scale + 0.2,
-            config.defaultPosition.X.Offset,
-            notification.frame.Position.Y.Scale,
-            notification.frame.Position.Y.Offset
-        ),
-        Enum.EasingDirection.Out,
-        Enum.EasingStyle.Quart,
-        config.animationSpeed,
-        true,
-        function()
-            notification.frame:Destroy()
-            NotificationSystem.UpdatePositions()
-        end
-    )
-end
-
--- Show a success notification
-function NotificationSystem.Success(title, message, duration, callback)
-    return NotificationSystem.Create({
-        title = title,
-        message = message,
-        duration = duration,
-        theme = "success",
-        callback = callback
-    })
-end
-
--- Show an error notification
-function NotificationSystem.Error(title, message, duration, callback)
-    return NotificationSystem.Create({
-        title = title,
-        message = message,
-        duration = duration,
-        theme = "error",
-        callback = callback
-    })
-end
-
--- Show a warning notification
-function NotificationSystem.Warning(title, message, duration, callback)
-    return NotificationSystem.Create({
-        title = title,
-        message = message,
-        duration = duration,
-        theme = "warning",
-        callback = callback
-    })
-end
-
--- Show an info notification
-function NotificationSystem.Info(title, message, duration, callback)
-    return NotificationSystem.Create({
-        title = title,
-        message = message,
-        duration = duration,
-        theme = "info",
-        callback = callback
-    })
-end
-
--- Show a custom notification
-function NotificationSystem.Custom(options)
-    return NotificationSystem.Create(options)
-end
-
--- Clear all notifications
-function NotificationSystem.ClearAll()
-    for i = #activeNotifications, 1, -1 do
-        NotificationSystem.Close(activeNotifications[i])
-    end
-end
-
--- Update configuration
-function NotificationSystem.UpdateConfig(newConfig)
-    for key, value in pairs(newConfig) do
-        if type(value) == "table" then
-            for subKey, subValue in pairs(value) do
-                config[key][subKey] = subValue
-            end
-        else
-            config[key] = value
-        end
-    end
-end
-
--- Add a new theme
-function NotificationSystem.AddTheme(themeName, themeColors)
-    config.themes[themeName] = themeColors
-end
-
--- Add a new icon
-function NotificationSystem.AddIcon(iconName, iconId)
-    config.icons[iconName] = iconId
-end
-
--- Get current configuration
-function NotificationSystem.GetConfig()
-    return config
-end
-
--- Initialize and return the module
-return NotificationSystem.Init()
