@@ -591,8 +591,318 @@ function RefreshTargetsTab()
     local targetsSection = configSections["Targets"]
     local targetsContainer = targetsSection:FindFirstChild("TargetsContainer")
     
-    -- Pet name input
-    local newPetInput = Instance.new("TextBox")
+    if targetsContainer then
+        targetsContainer:ClearAllChildren()
+        
+        -- Repopulate the container
+        local containerYOffset = 0
+        
+        for petName, maxPrice in pairs(Settings) do
+            -- Skip non-pet settings
+            if type(maxPrice) ~= "table" and petName ~= "Debug" and petName ~= "Advanced" and petName ~= "Notifications" then
+                -- Pet item container
+                local petContainer = Instance.new("Frame")
+                petContainer.Size = UDim2.new(1, 0, 0, 30)
+                petContainer.Position = UDim2.new(0, 0, 0, containerYOffset)
+                petContainer.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+                petContainer.Parent = targetsContainer
+                
+                local containerCorner = Instance.new("UICorner")
+                containerCorner.CornerRadius = UDim.new(0, 4)
+                containerCorner.Parent = petContainer
+                
+                -- Pet name label
+                local nameLabel = Instance.new("TextLabel")
+                nameLabel.Size = UDim2.new(0.4, -5, 0.8, 0)
+                nameLabel.Position = UDim2.new(0, 10, 0.1, 0)
+                nameLabel.BackgroundTransparency = 1
+                nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                nameLabel.TextSize = 14
+                nameLabel.Font = Enum.Font.SourceSansBold
+                nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+                nameLabel.Text = petName
+                nameLabel.Parent = petContainer
+                
+                -- Price input box
+                local priceInput = Instance.new("TextBox")
+                priceInput.Size = UDim2.new(0.3, -5, 0.8, 0)
+                priceInput.Position = UDim2.new(0.4, 5, 0.1, 0)
+                priceInput.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+                priceInput.Text = FormatPrice(maxPrice)
+                priceInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+                priceInput.TextSize = 14
+                priceInput.Font = Enum.Font.SourceSans
+                priceInput.Parent = petContainer
+                
+                local inputCorner = Instance.new("UICorner")
+                inputCorner.CornerRadius = UDim.new(0, 4)
+                inputCorner.Parent = priceInput
+                
+                -- Remove button
+                local removeButton = Instance.new("TextButton")
+                removeButton.Size = UDim2.new(0.15, -10, 0.8, 0)
+                removeButton.Position = UDim2.new(0.85, 0, 0.1, 0)
+                removeButton.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+                removeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                removeButton.TextSize = 14
+                removeButton.Font = Enum.Font.SourceSansBold
+                removeButton.Text = "X"
+                removeButton.Parent = petContainer
+                
+                local removeCorner = Instance.new("UICorner")
+                removeCorner.CornerRadius = UDim.new(0, 4)
+                removeCorner.Parent = removeButton
+                
+                -- Save changes when input loses focus
+                priceInput.FocusLost:Connect(function(enterPressed)
+                    local newPrice = priceInput.Text
+                    Settings[petName] = ParsePrice(newPrice)
+                    priceInput.Text = FormatPrice(Settings[petName])
+                    CreateNotification("Updated price for " .. petName .. " to " .. FormatPrice(Settings[petName]))
+                end)
+                
+                -- Remove pet when button clicked
+                removeButton.MouseButton1Click:Connect(function()
+                    Settings[petName] = nil
+                    petContainer:Destroy()
+                    RefreshTargetsTab()
+                    CreateNotification("Removed " .. petName .. " from targets")
+                end)
+                
+                containerYOffset = containerYOffset + 35
+            end
+        end
+        
+        -- Update containers size
+        targetsContainer.Size = UDim2.new(1, -10, 0, containerYOffset)
+        
+        -- Update section size
+        local targetsHeader = targetsSection:FindFirstChild("TextLabel")
+        if targetsHeader then
+            local headerPos = targetsHeader.Position.Y.Offset
+            local containerPos = targetsContainer.Position.Y.Offset
+            targetsSection.Size = UDim2.new(1, 0, 0, containerPos + containerYOffset + 10)
+        end
+        
+        -- Update canvas size for scrolling
+        local contentFrame = targetsSection.Parent
+        if contentFrame:IsA("ScrollingFrame") then
+            contentFrame.CanvasSize = UDim2.new(0, 0, 0, targetsSection.Size.Y.Offset + 10)
+        end
+    end
+end
+
+-- Function to populate the Debug tab
+function PopulateDebugTab()
+    local debugSection = configSections["Debug"]
+    local yOffset = 5
+    
+    -- Header
+    local debugHeader = Instance.new("TextLabel")
+    debugHeader.Size = UDim2.new(1, -10, 0, 25)
+    debugHeader.Position = UDim2.new(0, 5, 0, yOffset)
+    debugHeader.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    debugHeader.Text = "Debug Settings"
+    debugHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
+    debugHeader.TextSize = 14
+    debugHeader.Font = Enum.Font.SourceSansBold
+    debugHeader.Parent = debugSection
+    
+    yOffset = yOffset + 30
+    
+    -- Initialize debug settings if they don't exist
+    if not Settings["Debug"] then
+        Settings["Debug"] = {
+            DisableUI = false,
+            LogScans = true,
+            VerboseErrors = true,
+            LogPurchaseAttempts = true,
+            TraceRemoteCalls = false,
+            LogBoothData = true,
+            VerboseLogging = true
+        }
+    end
+    
+    -- Create toggle switches for each debug setting
+    local debugSettings = {
+        {"DisableUI", "Disable UI", "Hides all UI elements"},
+        {"LogScans", "Log Scans", "Logs basic scan information"},
+        {"VerboseErrors", "Verbose Errors", "Shows detailed error information"},
+        {"LogPurchaseAttempts", "Log Purchases", "Logs all purchase attempts"},
+        {"TraceRemoteCalls", "Trace Remotes", "Logs all remote calls (very verbose)"},
+        {"LogBoothData", "Log Booth Data", "Logs information about each booth"},
+        {"VerboseLogging", "Verbose Logging", "Logs every step (most verbose)"}
+    }
+    
+    for _, setting in ipairs(debugSettings) do
+        local key = setting[1]
+        local label = setting[2]
+        local tooltip = setting[3]
+        
+        -- Container for this setting
+        local settingContainer = Instance.new("Frame")
+        settingContainer.Size = UDim2.new(1, -10, 0, 30)
+        settingContainer.Position = UDim2.new(0, 5, 0, yOffset)
+        settingContainer.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        settingContainer.Parent = debugSection
+        
+        local containerCorner = Instance.new("UICorner")
+        containerCorner.CornerRadius = UDim.new(0, 4)
+        containerCorner.Parent = settingContainer
+        
+        -- Setting name label
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(0.7, -10, 0.8, 0)
+        nameLabel.Position = UDim2.new(0, 10, 0.1, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        nameLabel.TextSize = 14
+        nameLabel.Font = Enum.Font.SourceSansBold
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        nameLabel.Text = label
+        nameLabel.Parent = settingContainer
+        
+        -- Toggle button
+        local toggleButton = Instance.new("TextButton")
+        toggleButton.Size = UDim2.new(0.2, -10, 0.8, 0)
+        toggleButton.Position = UDim2.new(0.8, 0, 0.1, 0)
+        toggleButton.BackgroundColor3 = Settings["Debug"][key] and Color3.fromRGB(85, 255, 127) or Color3.fromRGB(255, 97, 97)
+        toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        toggleButton.TextSize = 14
+        toggleButton.Font = Enum.Font.SourceSansBold
+        toggleButton.Text = Settings["Debug"][key] and "ON" or "OFF"
+        toggleButton.Parent = settingContainer
+        
+        local toggleCorner = Instance.new("UICorner")
+        toggleCorner.CornerRadius = UDim.new(0, 4)
+        toggleCorner.Parent = toggleButton
+        
+        -- Create tooltip with additional information
+        local tooltipLabel = Instance.new("TextLabel")
+        tooltipLabel.Size = UDim2.new(0.7, -10, 0, 15)
+        tooltipLabel.Position = UDim2.new(0, 15, 0.7, 0)
+        tooltipLabel.BackgroundTransparency = 1
+        tooltipLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+        tooltipLabel.TextSize = 11
+        tooltipLabel.Font = Enum.Font.SourceSans
+        tooltipLabel.TextXAlignment = Enum.TextXAlignment.Left
+        tooltipLabel.Text = tooltip
+        tooltipLabel.Parent = settingContainer
+        
+        -- Toggle functionality
+        toggleButton.MouseButton1Click:Connect(function()
+            Settings["Debug"][key] = not Settings["Debug"][key]
+            toggleButton.Text = Settings["Debug"][key] and "ON" or "OFF"
+            toggleButton.BackgroundColor3 = Settings["Debug"][key] and Color3.fromRGB(85, 255, 127) or Color3.fromRGB(255, 97, 97)
+            
+            -- Create notification on toggle
+            local status = Settings["Debug"][key] and "enabled" or "disabled"
+            CreateNotification(label .. " " .. status)
+        end)
+        
+        yOffset = yOffset + 40
+    end
+    
+    -- Add a debug action button for clearing console
+    local clearConsoleButton = Instance.new("TextButton")
+    clearConsoleButton.Size = UDim2.new(1, -10, 0, 30)
+    clearConsoleButton.Position = UDim2.new(0, 5, 0, yOffset)
+    clearConsoleButton.BackgroundColor3 = Color3.fromRGB(80, 80, 160)
+    clearConsoleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    clearConsoleButton.TextSize = 14
+    clearConsoleButton.Font = Enum.Font.SourceSansBold
+    clearConsoleButton.Text = "Clear Console"
+    clearConsoleButton.Parent = debugSection
+    
+    local buttonCorner = Instance.new("UICorner")
+    buttonCorner.CornerRadius = UDim.new(0, 4)
+    buttonCorner.Parent = clearConsoleButton
+    
+    -- Clear console functionality
+    clearConsoleButton.MouseButton1Click:Connect(function()
+        -- Use Roblox's built-in clear function for console
+        for i = 1, 50 do
+            print("\n")
+        end
+        print("Console cleared by Booth Sniper")
+        CreateNotification("Console cleared")
+    end)
+    
+    yOffset = yOffset + 40
+    
+    -- Add a debug action button to print current settings
+    local printSettingsButton = Instance.new("TextButton")
+    printSettingsButton.Size = UDim2.new(1, -10, 0, 30)
+    printSettingsButton.Position = UDim2.new(0, 5, 0, yOffset)
+    printSettingsButton.BackgroundColor3 = Color3.fromRGB(80, 160, 80)
+    printSettingsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    printSettingsButton.TextSize = 14
+    printSettingsButton.Font = Enum.Font.SourceSansBold
+    printSettingsButton.Text = "Print Current Settings"
+    printSettingsButton.Parent = debugSection
+    
+    local button2Corner = Instance.new("UICorner")
+    button2Corner.CornerRadius = UDim.new(0, 4)
+    button2Corner.Parent = printSettingsButton
+    
+    -- Print settings functionality
+    printSettingsButton.MouseButton1Click:Connect(function()
+        print("\n===== BOOTH SNIPER SETTINGS =====")
+        
+        -- Print debug settings
+        print("\n-- Debug Settings --")
+        for key, value in pairs(Settings["Debug"]) do
+            print(string.format("  %s: %s", key, tostring(value)))
+        end
+        
+        -- Print advanced settings
+        if Settings["Advanced"] then
+            print("\n-- Advanced Settings --")
+            for key, value in pairs(Settings["Advanced"]) do
+                if type(value) == "table" then
+                    print(string.format("  %s: [Table with %d items]", key, #value))
+                else
+                    print(string.format("  %s: %s", key, tostring(value)))
+                end
+            end
+        end
+        
+        -- Print notification settings
+        if Settings["Notifications"] then
+            print("\n-- Notification Settings --")
+            for key, value in pairs(Settings["Notifications"]) do
+                print(string.format("  %s: %s", key, tostring(value)))
+            end
+        end
+        
+        -- Print target items
+        print("\n-- Target Items --")
+        local count = 0
+        for key, value in pairs(Settings) do
+            if type(value) ~= "table" then
+                print(string.format("  %s: %s", key, FormatPrice(value)))
+                count = count + 1
+            end
+        end
+        if count == 0 then
+            print("  No target items set")
+        end
+        
+        print("================================\n")
+        CreateNotification("Settings printed to console")
+    end)
+    
+    yOffset = yOffset + 40
+    
+    -- Update section size
+    debugSection.Size = UDim2.new(1, 0, 0, yOffset + 10)
+    
+    -- Update canvas size for scrolling
+    local contentFrame = debugSection.Parent
+    if contentFrame:IsA("ScrollingFrame") then
+        contentFrame.CanvasSize = UDim2.new(0, 0, 0, debugSection.Size.Y.Offset)
+    end
+end
     newPetInput.Size = UDim2.new(0.4, -15, 0.7, 0)
     newPetInput.Position = UDim2.new(0, 10, 0.15, 0)
     newPetInput.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
@@ -1047,7 +1357,638 @@ function ToggleSniper()
     end
 end
 
--- Display statistics
+-- Function to populate all UI settings tabs
+function PopulateUISettings()
+    -- TARGETS TAB
+    PopulateTargetsTab()
+    
+    -- DEBUG TAB
+    PopulateDebugTab()
+    
+    -- ADVANCED TAB
+    PopulateAdvancedTab()
+    
+    -- NOTIFICATIONS TAB
+    PopulateNotificationsTab()
+end
+
+-- Function to populate the Targets tab
+function PopulateTargetsTab()
+    local targetsSection = configSections["Targets"]
+    local yOffset = 5
+    
+    -- Header
+    local targetsHeader = Instance.new("TextLabel")
+    targetsHeader.Size = UDim2.new(1, -10, 0, 25)
+    targetsHeader.Position = UDim2.new(0, 5, 0, yOffset)
+    targetsHeader.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    targetsHeader.Text = "Add New Target"
+    targetsHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
+    targetsHeader.TextSize = 14
+    targetsHeader.Font = Enum.Font.SourceSansBold
+    targetsHeader.Parent = targetsSection
+    
+    yOffset = yOffset + 30
+    
+    -- Add new target container
+    local newTargetContainer = Instance.new("Frame")
+    newTargetContainer.Size = UDim2.new(1, -10, 0, 40)
+    newTargetContainer.Position = UDim2.new(0, 5, 0, yOffset)
+    newTargetContainer.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    newTargetContainer.Parent = targetsSection
+    
+    local containerCorner = Instance.new("UICorner")
+    containerCorner.CornerRadius = UDim.new(0, 4)
+    containerCorner.Parent = newTargetContainer
+    
+    -- Input fields and add button
+    local newPetInput = Instance.new("TextBox")
+    newPetInput.Size = UDim2.new(0.4, -15, 0.7, 0)
+    newPetInput.Position = UDim2.new(0, 10, 0.15, 0)
+    newPetInput.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    newPetInput.BorderSizePixel = 0
+    newPetInput.PlaceholderText = "Pet Name"
+    newPetInput.Text = ""
+    newPetInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    newPetInput.TextSize = 14
+    newPetInput.Font = Enum.Font.SourceSans
+    newPetInput.Parent = newTargetContainer
+    
+    local nameCorner = Instance.new("UICorner")
+    nameCorner.CornerRadius = UDim.new(0, 4)
+    nameCorner.Parent = newPetInput
+    
+    -- Price input
+    local newPriceInput = Instance.new("TextBox")
+    newPriceInput.Size = UDim2.new(0.3, -15, 0.7, 0)
+    newPriceInput.Position = UDim2.new(0.4, 5, 0.15, 0)
+    newPriceInput.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    newPriceInput.BorderSizePixel = 0
+    newPriceInput.PlaceholderText = "Max Price"
+    newPriceInput.Text = ""
+    newPriceInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    newPriceInput.TextSize = 14
+    newPriceInput.Font = Enum.Font.SourceSans
+    newPriceInput.Parent = newTargetContainer
+    
+    local priceCorner = Instance.new("UICorner")
+    priceCorner.CornerRadius = UDim.new(0, 4)
+    priceCorner.Parent = newPriceInput
+    
+    -- Add button
+    local addButton = Instance.new("TextButton")
+    addButton.Size = UDim2.new(0.25, -15, 0.7, 0)
+    addButton.Position = UDim2.new(0.7, 5, 0.15, 0)
+    addButton.BackgroundColor3 = Color3.fromRGB(85, 255, 127)
+    addButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    addButton.TextSize = 14
+    addButton.Font = Enum.Font.SourceSansBold
+    addButton.Text = "Add"
+    addButton.Parent = newTargetContainer
+    
+    local addCorner = Instance.new("UICorner")
+    addCorner.CornerRadius = UDim.new(0, 4)
+    addCorner.Parent = addButton
+    
+    -- Handle adding new targets
+    addButton.MouseButton1Click:Connect(function()
+        local petName = newPetInput.Text
+        local maxPrice = newPriceInput.Text
+        
+        if petName ~= "" and maxPrice ~= "" then
+            -- Parse price to number
+            local numericPrice = ParsePrice(maxPrice)
+            
+            -- Update settings
+            Settings[petName] = numericPrice
+            
+            -- Clear input fields
+            newPetInput.Text = ""
+            newPriceInput.Text = ""
+            
+            -- Refresh the targets display
+            RefreshTargetsTab()
+            
+            -- Show notification
+            CreateNotification("Added " .. petName .. " with max price of " .. FormatPrice(numericPrice))
+        end
+    end)
+    
+    yOffset = yOffset + 50
+    
+    -- Current targets header
+    local currentTargetsHeader = Instance.new("TextLabel")
+    currentTargetsHeader.Size = UDim2.new(1, -10, 0, 20)
+    currentTargetsHeader.Position = UDim2.new(0, 5, 0, yOffset)
+    currentTargetsHeader.BackgroundTransparency = 1
+    currentTargetsHeader.Text = "Current Targets"
+    currentTargetsHeader.TextColor3 = Color3.fromRGB(200, 200, 200)
+    currentTargetsHeader.TextSize = 14
+    currentTargetsHeader.Font = Enum.Font.SourceSansBold
+    currentTargetsHeader.Parent = targetsSection
+    
+    yOffset = yOffset + 25
+    
+    -- Container for current targets list
+    local targetsContainer = Instance.new("Frame")
+    targetsContainer.Name = "TargetsContainer"
+    targetsContainer.Size = UDim2.new(1, -10, 0, 0) -- Will be resized based on content
+    targetsContainer.Position = UDim2.new(0, 5, 0, yOffset)
+    targetsContainer.BackgroundTransparency = 1
+    targetsContainer.Parent = targetsSection
+    
+    -- Add current targets to container
+    local containerYOffset = 0
+    
+    for petName, maxPrice in pairs(Settings) do
+        -- Skip non-pet settings
+        if type(maxPrice) ~= "table" and petName ~= "Debug" and petName ~= "Advanced" and petName ~= "Notifications" then
+            -- Pet item container
+            local petContainer = Instance.new("Frame")
+            petContainer.Size = UDim2.new(1, 0, 0, 30)
+            petContainer.Position = UDim2.new(0, 0, 0, containerYOffset)
+            petContainer.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+            petContainer.Parent = targetsContainer
+            
+            local containerCorner = Instance.new("UICorner")
+            containerCorner.CornerRadius = UDim.new(0, 4)
+            containerCorner.Parent = petContainer
+            
+            -- Pet name label
+            local nameLabel = Instance.new("TextLabel")
+            nameLabel.Size = UDim2.new(0.4, -5, 0.8, 0)
+            nameLabel.Position = UDim2.new(0, 10, 0.1, 0)
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            nameLabel.TextSize = 14
+            nameLabel.Font = Enum.Font.SourceSansBold
+            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+            nameLabel.Text = petName
+            nameLabel.Parent = petContainer
+            
+            -- Price input box
+            local priceInput = Instance.new("TextBox")
+            priceInput.Size = UDim2.new(0.3, -5, 0.8, 0)
+            priceInput.Position = UDim2.new(0.4, 5, 0.1, 0)
+            priceInput.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+            priceInput.Text = FormatPrice(maxPrice)
+            priceInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+            priceInput.TextSize = 14
+            priceInput.Font = Enum.Font.SourceSans
+            priceInput.Parent = petContainer
+            
+            local inputCorner = Instance.new("UICorner")
+            inputCorner.CornerRadius = UDim.new(0, 4)
+            inputCorner.Parent = priceInput
+            
+            -- Remove button
+            local removeButton = Instance.new("TextButton")
+            removeButton.Size = UDim2.new(0.15, -10, 0.8, 0)
+            removeButton.Position = UDim2.new(0.85, 0, 0.1, 0)
+            removeButton.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+            removeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            removeButton.TextSize = 14
+            removeButton.Font = Enum.Font.SourceSansBold
+            removeButton.Text = "X"
+            removeButton.Parent = petContainer
+            
+            local removeCorner = Instance.new("UICorner")
+            removeCorner.CornerRadius = UDim.new(0, 4)
+            removeCorner.Parent = removeButton
+            
+            -- Save changes when input loses focus
+            priceInput.FocusLost:Connect(function(enterPressed)
+                local newPrice = priceInput.Text
+                Settings[petName] = ParsePrice(newPrice)
+                priceInput.Text = FormatPrice(Settings[petName])
+                CreateNotification("Updated price for " .. petName .. " to " .. FormatPrice(Settings[petName]))
+            end)
+            
+            -- Remove pet when button clicked
+            removeButton.MouseButton1Click:Connect(function()
+                Settings[petName] = nil
+                petContainer:Destroy()
+                RefreshTargetsTab()
+                CreateNotification("Removed " .. petName .. " from targets")
+            end)
+            
+            containerYOffset = containerYOffset + 35
+        end
+    end
+    
+    -- Update containers size
+    targetsContainer.Size = UDim2.new(1, -10, 0, containerYOffset)
+    
+    -- Update section size based on content
+    targetsSection.Size = UDim2.new(1, 0, 0, yOffset + containerYOffset + 10)
+end
+
+-- Function to populate the Advanced tab
+function PopulateAdvancedTab()
+    local advancedSection = configSections["Advanced"]
+    local yOffset = 5
+    
+    -- Header
+    local advancedHeader = Instance.new("TextLabel")
+    advancedHeader.Size = UDim2.new(1, -10, 0, 25)
+    advancedHeader.Position = UDim2.new(0, 5, 0, yOffset)
+    advancedHeader.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    advancedHeader.Text = "Advanced Settings"
+    advancedHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
+    advancedHeader.TextSize = 14
+    advancedHeader.Font = Enum.Font.SourceSansBold
+    advancedHeader.Parent = advancedSection
+    
+    yOffset = yOffset + 30
+    
+    -- Initialize advanced settings if they don't exist
+    if not Settings["Advanced"] then
+        Settings["Advanced"] = {
+            UseBoothFilter = false,
+            BoothWhitelist = {},
+            BoothBlacklist = {},
+            MaxPurchasesPerScan = 5,
+            PurchaseDelay = 0.3,
+            SimulateHuman = false,
+            ToggleKey = Enum.KeyCode.K,
+            StatsKey = Enum.KeyCode.L,
+            ClearStatsKey = Enum.KeyCode.P
+        }
+    end
+    
+    -- Create toggle switches for boolean settings
+    local booleanSettings = {
+        {"UseBoothFilter", "Use Booth Filter", "Filter booths by whitelist/blacklist"},
+        {"SimulateHuman", "Simulate Human", "Add random delays to seem more human-like"}
+    }
+    
+    -- Add toggleable settings
+    for _, setting in ipairs(booleanSettings) do
+        local key = setting[1]
+        local label = setting[2]
+        local tooltip = setting[3]
+        
+        -- Container for this setting
+        local settingContainer = Instance.new("Frame")
+        settingContainer.Size = UDim2.new(1, -10, 0, 30)
+        settingContainer.Position = UDim2.new(0, 5, 0, yOffset)
+        settingContainer.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        settingContainer.Parent = advancedSection
+        
+        local containerCorner = Instance.new("UICorner")
+        containerCorner.CornerRadius = UDim.new(0, 4)
+        containerCorner.Parent = settingContainer
+        
+        -- Setting name label
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(0.7, -10, 0.8, 0)
+        nameLabel.Position = UDim2.new(0, 10, 0.1, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        nameLabel.TextSize = 14
+        nameLabel.Font = Enum.Font.SourceSansBold
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        nameLabel.Text = label
+        nameLabel.Parent = settingContainer
+        
+        -- Toggle button
+        local toggleButton = Instance.new("TextButton")
+        toggleButton.Size = UDim2.new(0.2, -10, 0.8, 0)
+        toggleButton.Position = UDim2.new(0.8, 0, 0.1, 0)
+        toggleButton.BackgroundColor3 = Settings["Advanced"][key] and Color3.fromRGB(85, 255, 127) or Color3.fromRGB(255, 97, 97)
+        toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        toggleButton.TextSize = 14
+        toggleButton.Font = Enum.Font.SourceSansBold
+        toggleButton.Text = Settings["Advanced"][key] and "ON" or "OFF"
+        toggleButton.Parent = settingContainer
+        
+        local toggleCorner = Instance.new("UICorner")
+        toggleCorner.CornerRadius = UDim.new(0, 4)
+        toggleCorner.Parent = toggleButton
+        
+        -- Create tooltip with additional information
+        local tooltipLabel = Instance.new("TextLabel")
+        tooltipLabel.Size = UDim2.new(0.7, -10, 0, 15)
+        tooltipLabel.Position = UDim2.new(0, 15, 0.7, 0)
+        tooltipLabel.BackgroundTransparency = 1
+        tooltipLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+        tooltipLabel.TextSize = 11
+        tooltipLabel.Font = Enum.Font.SourceSans
+        tooltipLabel.TextXAlignment = Enum.TextXAlignment.Left
+        tooltipLabel.Text = tooltip
+        tooltipLabel.Parent = settingContainer
+        
+        -- Toggle functionality
+        toggleButton.MouseButton1Click:Connect(function()
+            Settings["Advanced"][key] = not Settings["Advanced"][key]
+            toggleButton.Text = Settings["Advanced"][key] and "ON" or "OFF"
+            toggleButton.BackgroundColor3 = Settings["Advanced"][key] and Color3.fromRGB(85, 255, 127) or Color3.fromRGB(255, 97, 97)
+            
+            -- Create notification on toggle
+            local status = Settings["Advanced"][key] and "enabled" or "disabled"
+            CreateNotification(label .. " " .. status)
+        end)
+        
+        yOffset = yOffset + 40
+    end
+    
+    -- Add numeric input settings
+    local numericSettings = {
+        {"MaxPurchasesPerScan", "Max Purchases Per Scan", "Maximum number of items to buy per scan", 1, 20},
+        {"PurchaseDelay", "Purchase Delay (seconds)", "Delay between purchase attempts", 0.1, 5}
+    }
+    
+    for _, setting in ipairs(numericSettings) do
+        local key = setting[1]
+        local label = setting[2]
+        local tooltip = setting[3]
+        local minValue = setting[4]
+        local maxValue = setting[5]
+        
+        -- Container for this setting
+        local settingContainer = Instance.new("Frame")
+        settingContainer.Size = UDim2.new(1, -10, 0, 30)
+        settingContainer.Position = UDim2.new(0, 5, 0, yOffset)
+        settingContainer.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        settingContainer.Parent = advancedSection
+        
+        local containerCorner = Instance.new("UICorner")
+        containerCorner.CornerRadius = UDim.new(0, 4)
+        containerCorner.Parent = settingContainer
+        
+        -- Setting name label
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(0.6, -10, 0.8, 0)
+        nameLabel.Position = UDim2.new(0, 10, 0.1, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        nameLabel.TextSize = 14
+        nameLabel.Font = Enum.Font.SourceSansBold
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        nameLabel.Text = label
+        nameLabel.Parent = settingContainer
+        
+        -- Value input box
+        local valueInput = Instance.new("TextBox")
+        valueInput.Size = UDim2.new(0.3, -10, 0.8, 0)
+        valueInput.Position = UDim2.new(0.7, 0, 0.1, 0)
+        valueInput.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+        valueInput.Text = tostring(Settings["Advanced"][key])
+        valueInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+        valueInput.TextSize = 14
+        valueInput.Font = Enum.Font.SourceSans
+        valueInput.Parent = settingContainer
+        
+        local inputCorner = Instance.new("UICorner")
+        inputCorner.CornerRadius = UDim.new(0, 4)
+        inputCorner.Parent = valueInput
+        
+        -- Create tooltip with additional information
+        local tooltipLabel = Instance.new("TextLabel")
+        tooltipLabel.Size = UDim2.new(0.7, -10, 0, 15)
+        tooltipLabel.Position = UDim2.new(0, 15, 0.7, 0)
+        tooltipLabel.BackgroundTransparency = 1
+        tooltipLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+        tooltipLabel.TextSize = 11
+        tooltipLabel.Font = Enum.Font.SourceSans
+        tooltipLabel.TextXAlignment = Enum.TextXAlignment.Left
+        tooltipLabel.Text = tooltip .. " (" .. minValue .. "-" .. maxValue .. ")"
+        tooltipLabel.Parent = settingContainer
+        
+        -- Save value when input loses focus
+        valueInput.FocusLost:Connect(function(enterPressed)
+            local newValue = tonumber(valueInput.Text)
+            if newValue then
+                -- Clamp value to min/max range
+                newValue = math.max(minValue, math.min(maxValue, newValue))
+                Settings["Advanced"][key] = newValue
+                valueInput.Text = tostring(newValue)
+                CreateNotification("Set " .. label .. " to " .. newValue)
+            else
+                -- Reset to old value if input is not a number
+                valueInput.Text = tostring(Settings["Advanced"][key])
+            end
+        end)
+        
+        yOffset = yOffset + 40
+    end
+    
+    -- Update section size
+    advancedSection.Size = UDim2.new(1, 0, 0, yOffset + 10)
+    
+    -- Update canvas size for scrolling
+    local contentFrame = advancedSection.Parent
+    if contentFrame:IsA("ScrollingFrame") then
+        contentFrame.CanvasSize = UDim2.new(0, 0, 0, advancedSection.Size.Y.Offset)
+    end
+end
+
+-- Function to populate the Notifications tab
+function PopulateNotificationsTab()
+    local notificationsSection = configSections["Notifications"]
+    local yOffset = 5
+    
+    -- Header
+    local notificationsHeader = Instance.new("TextLabel")
+    notificationsHeader.Size = UDim2.new(1, -10, 0, 25)
+    notificationsHeader.Position = UDim2.new(0, 5, 0, yOffset)
+    notificationsHeader.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    notificationsHeader.Text = "Notification Settings"
+    notificationsHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
+    notificationsHeader.TextSize = 14
+    notificationsHeader.Font = Enum.Font.SourceSansBold
+    notificationsHeader.Parent = notificationsSection
+    
+    yOffset = yOffset + 30
+    
+    -- Initialize notification settings if they don't exist
+    if not Settings["Notifications"] then
+        Settings["Notifications"] = {
+            Enabled = true,
+            Duration = 5,
+            Sound = true,
+            UseGameNotification = false
+        }
+    end
+    
+    -- Create toggle switches for boolean settings
+    local booleanSettings = {
+        {"Enabled", "Enable Notifications", "Show notifications for important events"},
+        {"Sound", "Play Sound", "Play a sound when notifications appear"},
+        {"UseGameNotification", "Use Game Notifications", "Use Roblox's built-in notification system"}
+    }
+    
+    -- Add toggleable settings
+    for _, setting in ipairs(booleanSettings) do
+        local key = setting[1]
+        local label = setting[2]
+        local tooltip = setting[3]
+        
+        -- Container for this setting
+        local settingContainer = Instance.new("Frame")
+        settingContainer.Size = UDim2.new(1, -10, 0, 30)
+        settingContainer.Position = UDim2.new(0, 5, 0, yOffset)
+        settingContainer.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        settingContainer.Parent = notificationsSection
+        
+        local containerCorner = Instance.new("UICorner")
+        containerCorner.CornerRadius = UDim.new(0, 4)
+        containerCorner.Parent = settingContainer
+        
+        -- Setting name label
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(0.7, -10, 0.8, 0)
+        nameLabel.Position = UDim2.new(0, 10, 0.1, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        nameLabel.TextSize = 14
+        nameLabel.Font = Enum.Font.SourceSansBold
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        nameLabel.Text = label
+        nameLabel.Parent = settingContainer
+        
+        -- Toggle button
+        local toggleButton = Instance.new("TextButton")
+        toggleButton.Size = UDim2.new(0.2, -10, 0.8, 0)
+        toggleButton.Position = UDim2.new(0.8, 0, 0.1, 0)
+        toggleButton.BackgroundColor3 = Settings["Notifications"][key] and Color3.fromRGB(85, 255, 127) or Color3.fromRGB(255, 97, 97)
+        toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        toggleButton.TextSize = 14
+        toggleButton.Font = Enum.Font.SourceSansBold
+        toggleButton.Text = Settings["Notifications"][key] and "ON" or "OFF"
+        toggleButton.Parent = settingContainer
+        
+        local toggleCorner = Instance.new("UICorner")
+        toggleCorner.CornerRadius = UDim.new(0, 4)
+        toggleCorner.Parent = toggleButton
+        
+        -- Create tooltip with additional information
+        local tooltipLabel = Instance.new("TextLabel")
+        tooltipLabel.Size = UDim2.new(0.7, -10, 0, 15)
+        tooltipLabel.Position = UDim2.new(0, 15, 0.7, 0)
+        tooltipLabel.BackgroundTransparency = 1
+        tooltipLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+        tooltipLabel.TextSize = 11
+        tooltipLabel.Font = Enum.Font.SourceSans
+        tooltipLabel.TextXAlignment = Enum.TextXAlignment.Left
+        tooltipLabel.Text = tooltip
+        tooltipLabel.Parent = settingContainer
+        
+        -- Toggle functionality
+        toggleButton.MouseButton1Click:Connect(function()
+            Settings["Notifications"][key] = not Settings["Notifications"][key]
+            toggleButton.Text = Settings["Notifications"][key] and "ON" or "OFF"
+            toggleButton.BackgroundColor3 = Settings["Notifications"][key] and Color3.fromRGB(85, 255, 127) or Color3.fromRGB(255, 97, 97)
+            
+            -- Create notification on toggle
+            local status = Settings["Notifications"][key] and "enabled" or "disabled"
+            CreateNotification(label .. " " .. status)
+        end)
+        
+        yOffset = yOffset + 40
+    end
+    
+    -- Duration setting
+    -- Container for duration setting
+    local durationContainer = Instance.new("Frame")
+    durationContainer.Size = UDim2.new(1, -10, 0, 30)
+    durationContainer.Position = UDim2.new(0, 5, 0, yOffset)
+    durationContainer.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    durationContainer.Parent = notificationsSection
+    
+    local containerCorner = Instance.new("UICorner")
+    containerCorner.CornerRadius = UDim.new(0, 4)
+    containerCorner.Parent = durationContainer
+    
+    -- Setting name label
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(0.6, -10, 0.8, 0)
+    nameLabel.Position = UDim2.new(0, 10, 0.1, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nameLabel.TextSize = 14
+    nameLabel.Font = Enum.Font.SourceSansBold
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    nameLabel.Text = "Notification Duration (seconds)"
+    nameLabel.Parent = durationContainer
+    
+    -- Value input box
+    local durationInput = Instance.new("TextBox")
+    durationInput.Size = UDim2.new(0.3, -10, 0.8, 0)
+    durationInput.Position = UDim2.new(0.7, 0, 0.1, 0)
+    durationInput.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    durationInput.Text = tostring(Settings["Notifications"].Duration or 5)
+    durationInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    durationInput.TextSize = 14
+    durationInput.Font = Enum.Font.SourceSans
+    durationInput.Parent = durationContainer
+    
+    local inputCorner = Instance.new("UICorner")
+    inputCorner.CornerRadius = UDim.new(0, 4)
+    inputCorner.Parent = durationInput
+    
+    -- Create tooltip with additional information
+    local tooltipLabel = Instance.new("TextLabel")
+    tooltipLabel.Size = UDim2.new(0.7, -10, 0, 15)
+    tooltipLabel.Position = UDim2.new(0, 15, 0.7, 0)
+    tooltipLabel.BackgroundTransparency = 1
+    tooltipLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+    tooltipLabel.TextSize = 11
+    tooltipLabel.Font = Enum.Font.SourceSans
+    tooltipLabel.TextXAlignment = Enum.TextXAlignment.Left
+    tooltipLabel.Text = "How long notifications stay on screen (1-10 seconds)"
+    tooltipLabel.Parent = durationContainer
+    
+    -- Save value when input loses focus
+    durationInput.FocusLost:Connect(function(enterPressed)
+        local newValue = tonumber(durationInput.Text)
+        if newValue then
+            -- Clamp value to 1-10 seconds
+            newValue = math.max(1, math.min(10, newValue))
+            Settings["Notifications"].Duration = newValue
+            durationInput.Text = tostring(newValue)
+            CreateNotification("Set notification duration to " .. newValue .. " seconds")
+        else
+            -- Reset to old value if input is not a number
+            durationInput.Text = tostring(Settings["Notifications"].Duration or 5)
+        end
+    end)
+    
+    yOffset = yOffset + 40
+    
+    -- Test notification button
+    local testButton = Instance.new("TextButton")
+    testButton.Size = UDim2.new(1, -10, 0, 30)
+    testButton.Position = UDim2.new(0, 5, 0, yOffset)
+    testButton.BackgroundColor3 = Color3.fromRGB(80, 160, 255)
+    testButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    testButton.TextSize = 14
+    testButton.Font = Enum.Font.SourceSansBold
+    testButton.Text = "Test Notification"
+    testButton.Parent = notificationsSection
+    
+    local buttonCorner = Instance.new("UICorner")
+    buttonCorner.CornerRadius = UDim.new(0, 4)
+    buttonCorner.Parent = testButton
+    
+    -- Test notification functionality
+    testButton.MouseButton1Click:Connect(function()
+        CreateNotification("This is a test notification", Settings["Notifications"].Duration)
+    end)
+    
+    yOffset = yOffset + 40
+    
+    -- Update section size
+    notificationsSection.Size = UDim2.new(1, 0, 0, yOffset + 10)
+    
+    -- Update canvas size for scrolling
+    local contentFrame = notificationsSection.Parent
+    if contentFrame:IsA("ScrollingFrame") then
+        contentFrame.CanvasSize = UDim2.new(0, 0, 0, notificationsSection.Size.Y.Offset)
+    end
+end
+
+-- Function to display statistics
 function DisplayStats()
     local statMessage = string.format(
         "===== SNIPER STATS =====\n" ..
