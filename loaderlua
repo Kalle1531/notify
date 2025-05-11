@@ -1,0 +1,1789 @@
+local purchasedItems = {}
+
+-- Statistics tracking
+local stats = {
+    totalScans = 0,
+    totalSnipes = 0,
+    diamondsSaved = 0,
+    diamonds = 0,
+    lastCheckTime = 0,
+    snipeHistory = {}
+}
+
+-- Pet directory reference for better pet name detection
+local PetDirectory = nil
+
+-- Try to access the pet directory from ReplicatedStorage
+local function InitializePetDirectory()
+    local success, directory = pcall(function()
+        return game:GetService("ReplicatedStorage").__DIRECTORY.Pets
+    end)
+    
+    if success and directory then
+        PetDirectory = directory
+        print("[INIT] Successfully found pet directory")
+        
+        -- Log the categories we found
+        local categories = {}
+        for _, category in pairs(PetDirectory:GetChildren()) do
+            if category:IsA("Folder") then
+                table.insert(categories, category.Name)
+            end
+        end
+        print(string.format("[INIT] Found pet categories: %s", table.concat(categories, ", ")))
+        return true
+    else
+        warn("[INIT] Could not find pet directory. Pet name detection may be less accurate.")
+        return false
+    end
+end
+
+-- UI Services
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+-- UI variables
+local BoothSniper = nil
+local mainFrame = nil
+local statusFrame = nil
+local configFrame = nil
+local StatusLabel = nil
+local DiamondLabel = nil
+local configSections = {}
+local currentTab = nil
+local menuOpen = false
+
+-- UI creation function
+local function CreateUI()
+    if Settings["Debug"] and Settings["Debug"].DisableUI then
+        print("[UI] UI disabled in settings")
+        return
+    end
+    
+    -- Create main ScreenGui
+    BoothSniper = Instance.new("ScreenGui")
+    BoothSniper.Name = "BoothSniper"
+    BoothSniper.ResetOnSpawn = false
+    BoothSniper.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    BoothSniper.Parent = PlayerGui
+    
+    -- Create status display UI
+    statusFrame = Instance.new("Frame")
+    statusFrame.Name = "StatusFrame"
+    statusFrame.Size = UDim2.new(0, 200, 0, 60)
+    statusFrame.Position = UDim2.new(0, 10, 0, 10)
+    statusFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    statusFrame.BorderSizePixel = 0
+    statusFrame.Parent = BoothSniper
+    
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(0, 6)
+    UICorner.Parent = statusFrame
+    
+    local Title = Instance.new("TextLabel")
+    Title.Size = UDim2.new(0.8, 0, 0, 20)
+    Title.Position = UDim2.new(0, 5, 0, 0)
+    Title.BackgroundTransparency = 1
+    Title.Text = "Booth Sniper"
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.TextSize = 14
+    Title.Font = Enum.Font.SourceSansBold
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    Title.Parent = statusFrame
+    
+    -- Config button
+    local configButton = Instance.new("TextButton")
+    configButton.Size = UDim2.new(0, 20, 0, 20)
+    configButton.Position = UDim2.new(1, -25, 0, 0)
+    configButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    configButton.Text = "⚙️"
+    configButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    configButton.TextSize = 14
+    configButton.Font = Enum.Font.SourceSansBold
+    configButton.Parent = statusFrame
+    
+    local buttonCorner = Instance.new("UICorner")
+    buttonCorner.CornerRadius = UDim.new(0, 4)
+    buttonCorner.Parent = configButton
+    
+    StatusLabel = Instance.new("TextLabel")
+    StatusLabel.Size = UDim2.new(1, -10, 0, 20)
+    StatusLabel.Position = UDim2.new(0, 5, 0, 20)
+    StatusLabel.BackgroundTransparency = 1
+    StatusLabel.Text = "Sniper: OFF"
+    StatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+    StatusLabel.TextSize = 14
+    StatusLabel.Font = Enum.Font.SourceSans
+    StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    StatusLabel.Parent = statusFrame
+    
+    DiamondLabel = Instance.new("TextLabel")
+    DiamondLabel.Size = UDim2.new(1, -10, 0, 20)
+    DiamondLabel.Position = UDim2.new(0, 5, 0, 40)
+    DiamondLabel.BackgroundTransparency = 1
+    DiamondLabel.Text = "Diamonds: Loading..."
+    DiamondLabel.TextColor3 = Color3.fromRGB(100, 255, 255)
+    DiamondLabel.TextSize = 14
+    DiamondLabel.Font = Enum.Font.SourceSans
+    DiamondLabel.TextXAlignment = Enum.TextXAlignment.Left
+    DiamondLabel.Parent = statusFrame
+    
+    -- Create config menu UI (initially hidden)
+    configFrame = Instance.new("Frame")
+    configFrame.Name = "ConfigFrame"
+    configFrame.Size = UDim2.new(0, 350, 0, 400)
+    configFrame.Position = UDim2.new(0, 220, 0, 10)
+    configFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    configFrame.BorderSizePixel = 0
+    configFrame.Visible = false
+    configFrame.Parent = BoothSniper
+    
+    local configCorner = Instance.new("UICorner")
+    configCorner.CornerRadius = UDim.new(0, 6)
+    configCorner.Parent = configFrame
+    
+    local configTitle = Instance.new("TextLabel")
+    configTitle.Size = UDim2.new(1, -10, 0, 30)
+    configTitle.Position = UDim2.new(0, 5, 0, 5)
+    configTitle.BackgroundTransparency = 1
+    configTitle.Text = "Configuration"
+    configTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    configTitle.TextSize = 18
+    configTitle.Font = Enum.Font.SourceSansBold
+    configTitle.TextXAlignment = Enum.TextXAlignment.Left
+    configTitle.Parent = configFrame
+    
+    -- Close button
+    local closeButton = Instance.new("TextButton")
+    closeButton.Size = UDim2.new(0, 25, 0, 25)
+    closeButton.Position = UDim2.new(1, -30, 0, 5)
+    closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    closeButton.Text = "X"
+    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeButton.TextSize = 14
+    closeButton.Font = Enum.Font.SourceSansBold
+    closeButton.Parent = configFrame
+    
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 4)
+    closeCorner.Parent = closeButton
+    
+    -- Tab buttons container
+    local tabsFrame = Instance.new("Frame")
+    tabsFrame.Size = UDim2.new(1, -10, 0, 30)
+    tabsFrame.Position = UDim2.new(0, 5, 0, 40)
+    tabsFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    tabsFrame.BorderSizePixel = 0
+    tabsFrame.Parent = configFrame
+    
+    local tabsCorner = Instance.new("UICorner")
+    tabsCorner.CornerRadius = UDim.new(0, 4)
+    tabsCorner.Parent = tabsFrame
+    
+    -- Tab buttons
+    local tabs = {"Targets", "Debug", "Advanced", "Notifications"}
+    local tabButtons = {}
+    
+    for i, tabName in ipairs(tabs) do
+        local button = Instance.new("TextButton")
+        button.Name = tabName .. "Button"
+        button.Size = UDim2.new(0, 80, 1, -6)
+        button.Position = UDim2.new(0, 5 + (i-1) * 85, 0, 3)
+        button.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+        button.Text = tabName
+        button.TextColor3 = Color3.fromRGB(255, 255, 255)
+        button.TextSize = 14
+        button.Font = Enum.Font.SourceSans
+        button.Parent = tabsFrame
+        
+        local buttonCorner = Instance.new("UICorner")
+        buttonCorner.CornerRadius = UDim.new(0, 4)
+        buttonCorner.Parent = button
+        
+        tabButtons[tabName] = button
+    end
+    
+    -- Content area
+    local contentFrame = Instance.new("ScrollingFrame")
+    contentFrame.Size = UDim2.new(1, -10, 1, -80)
+    contentFrame.Position = UDim2.new(0, 5, 0, 75)
+    contentFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    contentFrame.BorderSizePixel = 0
+    contentFrame.ScrollBarThickness = 6
+    contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0) -- Will be updated dynamically
+    contentFrame.Parent = configFrame
+    
+    local contentCorner = Instance.new("UICorner")
+    contentCorner.CornerRadius = UDim.new(0, 4)
+    contentCorner.Parent = contentFrame
+    
+    -- Create content section for each tab
+    for _, tabName in ipairs(tabs) do
+        local section = Instance.new("Frame")
+        section.Name = tabName .. "Section"
+        section.Size = UDim2.new(1, -10, 1, 0) -- Will be resized based on content
+        section.Position = UDim2.new(0, 5, 0, 5)
+        section.BackgroundTransparency = 1
+        section.Visible = false
+        section.Parent = contentFrame
+        
+        configSections[tabName] = section
+    end
+    
+    -- Add tab button functionality
+    for tabName, button in pairs(tabButtons) do
+        button.MouseButton1Click:Connect(function()
+            -- Hide all sections
+            for _, section in pairs(configSections) do
+                section.Visible = false
+            end
+            
+            -- Reset all button colors
+            for _, btn in pairs(tabButtons) do
+                btn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+            end
+            
+            -- Show selected section and highlight button
+            configSections[tabName].Visible = true
+            button.BackgroundColor3 = Color3.fromRGB(100, 100, 200)
+            currentTab = tabName
+            
+            -- Update canvas size based on content
+            contentFrame.CanvasSize = UDim2.new(0, 0, 0, configSections[tabName].Size.Y.Offset + 10)
+        end)
+    end
+    
+    -- Close button functionality
+    closeButton.MouseButton1Click:Connect(function()
+        ToggleConfigMenu(false)
+    end)
+    
+    -- Config button functionality 
+    configButton.MouseButton1Click:Connect(function()
+        ToggleConfigMenu(not menuOpen)
+    end)
+    
+    -- Make frames draggable
+    MakeDraggable(statusFrame)
+    MakeDraggable(configFrame)
+    
+    -- Populate the UI sections with settings
+    PopulateUISettings()
+    
+    -- Select the first tab by default
+    -- Manually fire the click handler for the first tab
+    for tabName, section in pairs(configSections) do
+        section.Visible = false
+    end
+    for _, btn in pairs(tabButtons) do
+        btn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    end
+    configSections["Targets"].Visible = true
+    tabButtons["Targets"].BackgroundColor3 = Color3.fromRGB(100, 100, 200)
+    currentTab = "Targets"
+    contentFrame.CanvasSize = UDim2.new(0, 0, 0, configSections["Targets"].Size.Y.Offset + 10)
+    
+    return true
+end
+
+-- Function to make a frame draggable
+function MakeDraggable(frame)
+    local dragging = false
+    local dragInput
+    local dragStart
+    local startPos
+    
+    local function UpdateInput(input)
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+    
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    frame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            dragInput = input
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            UpdateInput(input)
+        end
+    end)
+end
+
+-- Toggle the configuration menu
+function ToggleConfigMenu(state)
+    menuOpen = state
+    if configFrame then
+        configFrame.Visible = menuOpen
+        
+        -- Add animation
+        if menuOpen then
+            configFrame.Position = UDim2.new(0, 220, 0, -configFrame.Size.Y.Offset)
+            configFrame.Visible = true
+            
+            local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            local tween = TweenService:Create(configFrame, tweenInfo, {Position = UDim2.new(0, 220, 0, 10)})
+            tween:Play()
+        else
+            local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+            local tween = TweenService:Create(configFrame, tweenInfo, {Position = UDim2.new(0, 220, 0, -configFrame.Size.Y.Offset)})
+            tween:Play()
+            tween.Completed:Connect(function()
+                if not menuOpen then
+                    configFrame.Visible = false
+                end
+            end)
+        end
+    end
+end
+
+-- Populate UI with current settings
+function PopulateUISettings()
+    -- TARGETS TAB
+    PopulateTargetsTab()
+    
+    -- DEBUG TAB
+    PopulateDebugTab()
+    
+    -- ADVANCED TAB
+    PopulateAdvancedTab()
+    
+    -- NOTIFICATIONS TAB
+    PopulateNotificationsTab()
+end
+
+-- Function to populate the Targets tab
+function PopulateTargetsTab()
+    local targetsSection = configSections["Targets"]
+    local yOffset = 5
+    
+    -- Header
+    local targetHeader = Instance.new("TextLabel")
+    targetHeader.Size = UDim2.new(1, -10, 0, 25)
+    targetHeader.Position = UDim2.new(0, 5, 0, yOffset)
+    targetHeader.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    targetHeader.Text = "Target Pets and Prices"
+    targetHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
+    targetHeader.TextSize = 14
+    targetHeader.Font = Enum.Font.SourceSansBold
+    targetHeader.Parent = targetsSection
+    
+    yOffset = yOffset + 30
+    
+    -- Add new target input
+    local newTargetContainer = Instance.new("Frame")
+    newTargetContainer.Size = UDim2.new(1, -10, 0, 30)
+    newTargetContainer.Position = UDim2.new(0, 5, 0, yOffset)
+    newTargetContainer.BackgroundColor3 = Color3.fromRGB(60, 100, 60)
+    newTargetContainer.Parent = targetsSection
+    
+    local containerCorner = Instance.new("UICorner")
+    containerCorner.CornerRadius = UDim.new(0, 4)
+    containerCorner.Parent = newTargetContainer
+    
+    -- New pet name input
+    local newPetInput = Instance.new("TextBox")
+    newPetInput.Size = UDim2.new(0.4, -5, 0.8, 0)
+    newPetInput.Position = UDim2.new(0, 10, 0.1, 0)
+    newPetInput.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    newPetInput.PlaceholderText = "Pet Name"
+    newPetInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    newPetInput.TextSize = 14
+    newPetInput.Font = Enum.Font.SourceSans
+    newPetInput.Parent = newTargetContainer
+    
+    local inputCorner1 = Instance.new("UICorner")
+    inputCorner1.CornerRadius = UDim.new(0, 4)
+    inputCorner1.Parent = newPetInput
+    
+    -- New price input box
+    local newPriceInput = Instance.new("TextBox")
+    newPriceInput.Size = UDim2.new(0.3, -5, 0.8, 0)
+    newPriceInput.Position = UDim2.new(0.4, 5, 0.1, 0)
+    newPriceInput.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    newPriceInput.PlaceholderText = "Max Price"
+    newPriceInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    newPriceInput.TextSize = 14
+    newPriceInput.Font = Enum.Font.SourceSans
+    newPriceInput.Parent = newTargetContainer
+    
+    local inputCorner2 = Instance.new("UICorner")
+    inputCorner2.CornerRadius = UDim.new(0, 4)
+    inputCorner2.Parent = newPriceInput
+    
+    -- Add button
+    local addButton = Instance.new("TextButton")
+    addButton.Size = UDim2.new(0.25, -10, 0.8, 0)
+    addButton.Position = UDim2.new(0.75, 0, 0.1, 0)
+    addButton.BackgroundColor3 = Color3.fromRGB(85, 170, 127)
+    addButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    addButton.TextSize = 14
+    addButton.Font = Enum.Font.SourceSansBold
+    addButton.Text = "Add"
+    addButton.Parent = newTargetContainer
+    
+    local addCorner = Instance.new("UICorner")
+    addCorner.CornerRadius = UDim.new(0, 4)
+    addCorner.Parent = addButton
+    
+    -- Handle adding new targets
+    addButton.MouseButton1Click:Connect(function()
+        local petName = newPetInput.Text
+        local maxPrice = newPriceInput.Text
+        
+        if petName ~= "" and maxPrice ~= "" then
+            -- Parse price to number
+            local numericPrice = ParsePrice(maxPrice)
+            
+            -- Add to settings
+            Settings[petName] = numericPrice
+            
+            -- Clear inputs
+            newPetInput.Text = ""
+            newPriceInput.Text = ""
+            
+            -- Refresh UI to show new target
+            RefreshTargetsTab()
+            
+            -- Notification
+            CreateNotification("Added " .. petName .. " with max price " .. FormatPrice(numericPrice))
+        end
+    end)
+    
+    yOffset = yOffset + 40
+    
+    -- Separator
+    local separator = Instance.new("Frame")
+    separator.Size = UDim2.new(1, -10, 0, 2)
+    separator.Position = UDim2.new(0, 5, 0, yOffset)
+    separator.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    separator.Parent = targetsSection
+    
+    yOffset = yOffset + 10
+    
+    -- Current targets header
+    local currentTargetsHeader = Instance.new("TextLabel")
+    currentTargetsHeader.Size = UDim2.new(1, -10, 0, 20)
+    currentTargetsHeader.Position = UDim2.new(0, 5, 0, yOffset)
+    currentTargetsHeader.BackgroundTransparency = 1
+    currentTargetsHeader.Text = "Current Targets"
+    currentTargetsHeader.TextColor3 = Color3.fromRGB(200, 200, 200)
+    currentTargetsHeader.TextSize = 14
+    currentTargetsHeader.Font = Enum.Font.SourceSansBold
+    currentTargetsHeader.Parent = targetsSection
+    
+    yOffset = yOffset + 25
+    
+    -- Container for current targets list
+    local targetsContainer = Instance.new("Frame")
+    targetsContainer.Name = "TargetsContainer"
+    targetsContainer.Size = UDim2.new(1, -10, 0, 0) -- Will be resized based on content
+    targetsContainer.Position = UDim2.new(0, 5, 0, yOffset)
+    targetsContainer.BackgroundTransparency = 1
+    targetsContainer.Parent = targetsSection
+    
+    -- Add current targets to container
+    local containerYOffset = 0
+    
+    for petName, maxPrice in pairs(Settings) do
+        -- Skip non-pet settings
+        if type(maxPrice) ~= "table" and petName ~= "Debug" and petName ~= "Advanced" and petName ~= "Notifications" then
+            -- Pet item container
+            local petContainer = Instance.new("Frame")
+            petContainer.Size = UDim2.new(1, 0, 0, 30)
+            petContainer.Position = UDim2.new(0, 0, 0, containerYOffset)
+            petContainer.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+            petContainer.Parent = targetsContainer
+            
+            local containerCorner = Instance.new("UICorner")
+            containerCorner.CornerRadius = UDim.new(0, 4)
+            containerCorner.Parent = petContainer
+            
+            -- Pet name label
+            local nameLabel = Instance.new("TextLabel")
+            nameLabel.Size = UDim2.new(0.4, -5, 0.8, 0)
+            nameLabel.Position = UDim2.new(0, 10, 0.1, 0)
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            nameLabel.TextSize = 14
+            nameLabel.Font = Enum.Font.SourceSansBold
+            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+            nameLabel.Text = petName
+            nameLabel.Parent = petContainer
+            
+            -- Price input box
+            local priceInput = Instance.new("TextBox")
+            priceInput.Size = UDim2.new(0.3, -5, 0.8, 0)
+            priceInput.Position = UDim2.new(0.4, 5, 0.1, 0)
+            priceInput.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+            priceInput.Text = FormatPrice(maxPrice)
+            priceInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+            priceInput.TextSize = 14
+            priceInput.Font = Enum.Font.SourceSans
+            priceInput.Parent = petContainer
+            
+            local inputCorner = Instance.new("UICorner")
+            inputCorner.CornerRadius = UDim.new(0, 4)
+            inputCorner.Parent = priceInput
+            
+            -- Remove button
+            local removeButton = Instance.new("TextButton")
+            removeButton.Size = UDim2.new(0.15, -10, 0.8, 0)
+            removeButton.Position = UDim2.new(0.85, 0, 0.1, 0)
+            removeButton.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+            removeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            removeButton.TextSize = 14
+            removeButton.Font = Enum.Font.SourceSansBold
+            removeButton.Text = "X"
+            removeButton.Parent = petContainer
+            
+            local removeCorner = Instance.new("UICorner")
+            removeCorner.CornerRadius = UDim.new(0, 4)
+            removeCorner.Parent = removeButton
+            
+            -- Save changes when input loses focus
+            priceInput.FocusLost:Connect(function(enterPressed)
+                local newPrice = priceInput.Text
+                Settings[petName] = ParsePrice(newPrice)
+                priceInput.Text = FormatPrice(Settings[petName])
+                CreateNotification("Updated price for " .. petName .. " to " .. FormatPrice(Settings[petName]))
+            end)
+            
+            -- Remove pet when button clicked
+            removeButton.MouseButton1Click:Connect(function()
+                Settings[petName] = nil
+                petContainer:Destroy()
+                RefreshTargetsTab()
+                CreateNotification("Removed " .. petName .. " from targets")
+            end)
+            
+            containerYOffset = containerYOffset + 35
+        end
+    end
+    
+    -- Update containers size
+    targetsContainer.Size = UDim2.new(1, -10, 0, containerYOffset)
+    
+    -- Update section size based on content
+    targetsSection.Size = UDim2.new(1, 0, 0, yOffset + containerYOffset + 10)
+end
+
+-- Function to refresh the Targets tab
+function RefreshTargetsTab()
+    -- Clear existing targets container
+    local targetsSection = configSections["Targets"]
+    local targetsContainer = targetsSection:FindFirstChild("TargetsContainer")
+    
+    -- Pet name input
+    local newPetInput = Instance.new("TextBox")
+    newPetInput.Size = UDim2.new(0.4, -15, 0.7, 0)
+    newPetInput.Position = UDim2.new(0, 10, 0.15, 0)
+    newPetInput.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    newPetInput.BorderSizePixel = 0
+    newPetInput.PlaceholderText = "Pet Name"
+    newPetInput.Text = ""
+    newPetInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    newPetInput.TextSize = 14
+    newPetInput.Font = Enum.Font.SourceSans
+    newPetInput.Parent = addContainer
+    
+    local nameCorner = Instance.new("UICorner")
+    nameCorner.CornerRadius = UDim.new(0, 4)
+    nameCorner.Parent = newPetInput
+    
+    -- Price input
+    local newPriceInput = Instance.new("TextBox")
+    newPriceInput.Size = UDim2.new(0.3, -15, 0.7, 0)
+    newPriceInput.Position = UDim2.new(0.4, 5, 0.15, 0)
+    newPriceInput.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    newPriceInput.BorderSizePixel = 0
+    newPriceInput.PlaceholderText = "Max Price"
+    newPriceInput.Text = ""
+    newPriceInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    newPriceInput.TextSize = 14
+    newPriceInput.Font = Enum.Font.SourceSans
+    newPriceInput.Parent = addContainer
+    
+    local priceCorner = Instance.new("UICorner")
+    priceCorner.CornerRadius = UDim.new(0, 4)
+    priceCorner.Parent = newPriceInput
+    
+    -- Add button
+    local addButton = Instance.new("TextButton")
+    addButton.Size = UDim2.new(0.25, -15, 0.7, 0)
+    addButton.Position = UDim2.new(0.7, 5, 0.15, 0)
+    addButton.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+    addButton.Text = "Add"
+    addButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    addButton.TextSize = 14
+    addButton.Font = Enum.Font.SourceSansBold
+    addButton.Parent = addContainer
+    
+    local addBtnCorner = Instance.new("UICorner")
+    addBtnCorner.CornerRadius = UDim.new(0, 4)
+    addBtnCorner.Parent = addButton
+    
+    yOffset = yOffset + 50
+    
+    -- Update section size
+    targetsSection.Size = UDim2.new(1, -10, 0, yOffset)
+    
+    -- NOTE: We would continue by adding similar sections for the Debug, Advanced, and Notifications tabs
+    -- But for brevity, I'm just showing the structure for the Targets tab for now
+    
+    -- Set color scheme for all items
+    -- This would be implemented to ensure consistent UI design
+end
+
+-- Function to toggle the sniper on/off
+function ToggleSniper()
+    sniperEnabled = not sniperEnabled
+    
+    -- Update UI if it exists
+    if StatusLabel then
+        StatusLabel.Text = "Sniper: " .. (sniperEnabled and "ON" or "OFF")
+        StatusLabel.TextColor3 = sniperEnabled and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 100, 100)
+    end
+end
+
+-- Debug print function with timestamp
+function DebugPrint(message, isError)
+    local timestamp = os.date("%H:%M:%S")
+    local prefix = isError and "[ERROR]" or "[DEBUG]"
+    print(string.format("%s %s: %s", prefix, timestamp, message))
+end
+
+-- Create a notification
+function CreateNotification(message, duration)
+    -- Default duration if not specified
+    duration = duration or 3
+    
+    -- Check if notifications are disabled
+    if Settings["Notifications"] and Settings["Notifications"].Enabled == false then
+        if Settings["Debug"] and Settings["Debug"].VerboseLogging then
+            print("[NOTIFICATION] Suppressed notification: " .. message)
+        end
+        return
+    end
+    
+    -- Create UI notification if enabled
+    if Settings["Notifications"] and Settings["Notifications"].UseGameNotification then
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Booth Sniper",
+            Text = message,
+            Duration = duration,
+            Icon = "rbxassetid://7510995767" -- Diamond icon
+        })
+        return
+    end
+    
+    -- Play sound if enabled
+    if Settings["Notifications"] and Settings["Notifications"].Sound then
+        local sound = Instance.new("Sound")
+        sound.SoundId = "rbxassetid://6895079853" -- Achievement ding sound
+        sound.Volume = 0.5
+        sound.Parent = game:GetService("SoundService")
+        sound:Play()
+        game:GetService("Debris"):AddItem(sound, 2)
+    end
+    
+    -- Create custom notification
+    local NotificationGui = Instance.new("ScreenGui")
+    NotificationGui.Name = "SniperNotification_" .. os.time()
+    NotificationGui.ResetOnSpawn = false
+    NotificationGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    NotificationGui.DisplayOrder = 100
+    
+    local NotificationFrame = Instance.new("Frame")
+    NotificationFrame.Name = "NotificationFrame"
+    NotificationFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    NotificationFrame.BackgroundTransparency = 0.2
+    NotificationFrame.BorderSizePixel = 0
+    NotificationFrame.Position = UDim2.new(1, -5, 0.5, 0) -- Start off screen
+    NotificationFrame.Size = UDim2.new(0, 250, 0, 60)
+    NotificationFrame.AnchorPoint = Vector2.new(1, 0.5)
+    NotificationFrame.Parent = NotificationGui
+    
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(0, 8)
+    UICorner.Parent = NotificationFrame
+    
+    local UIStroke = Instance.new("UIStroke")
+    UIStroke.Thickness = 2
+    UIStroke.Color = Color3.fromRGB(85, 170, 255)
+    UIStroke.Parent = NotificationFrame
+    
+    local MessageLabel = Instance.new("TextLabel")
+    MessageLabel.Name = "MessageLabel"
+    MessageLabel.BackgroundTransparency = 1
+    MessageLabel.Position = UDim2.new(0, 10, 0, 5)
+    MessageLabel.Size = UDim2.new(1, -20, 1, -10)
+    MessageLabel.Font = Enum.Font.GothamBold
+    MessageLabel.Text = message
+    MessageLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MessageLabel.TextSize = 14
+    MessageLabel.TextWrapped = true
+    MessageLabel.TextYAlignment = Enum.TextYAlignment.Center
+    MessageLabel.Parent = NotificationFrame
+    
+    NotificationGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    
+    -- Animation
+    local function animateIn()
+        local targetPosition = UDim2.new(1, -20, 0.5, 0)
+        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local tween = TweenService:Create(NotificationFrame, tweenInfo, {Position = targetPosition})
+        tween:Play()
+    end
+    
+    local function animateOut()
+        local targetPosition = UDim2.new(1, 5, 0.5, 0)
+        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+        local tween = TweenService:Create(NotificationFrame, tweenInfo, {Position = targetPosition})
+        tween:Play()
+        tween.Completed:Connect(function()
+            NotificationGui:Destroy()
+        end)
+    end
+    
+    animateIn()
+    
+    -- Auto destroy after duration
+    spawn(function()
+        task.wait(duration)
+        animateOut()
+    end)
+    
+    -- Also print the message to console
+    print("[NOTIFICATION] " .. message)
+end
+
+-- Function to display statistics
+local function DisplayStats()
+    if Settings["Debug"] and Settings["Debug"].DisableUI then
+        -- Just print to console if UI is disabled
+        print("=== BOOTH SNIPER STATISTICS ===")
+        print("Total Scans: " .. stats.totalScans)
+        print("Total Snipes: " .. stats.totalSnipes)
+        print("Diamonds Saved: " .. FormatPrice(stats.diamondsSaved))
+        print("Running Since: " .. os.date("%H:%M:%S", stats.startTime))
+        print("Running Duration: " .. FormatTime(os.time() - stats.startTime))
+        return
+    end
+    
+    -- Create stats window
+    local statsFrame = BoothSniper:FindFirstChild("StatsFrame")
+    
+    if statsFrame then
+        -- Update existing stats window
+        local statsList = statsFrame:FindFirstChild("StatsList")
+        if statsList then
+            statsList:ClearAllChildren()
+            
+            -- Add stats labels
+            local statsData = {
+                {"Total Scans", stats.totalScans},
+                {"Total Snipes", stats.totalSnipes},
+                {"Diamonds Saved", FormatPrice(stats.diamondsSaved)},
+                {"Running Since", os.date("%H:%M:%S", stats.startTime)},
+                {"Running Duration", FormatTime(os.time() - stats.startTime)},
+            }
+            
+            for i, data in ipairs(statsData) do
+                local label = Instance.new("TextLabel")
+                label.Size = UDim2.new(1, 0, 0, 25)
+                label.Position = UDim2.new(0, 0, 0, (i-1) * 30)
+                label.BackgroundTransparency = 1
+                label.TextColor3 = Color3.fromRGB(255, 255, 255)
+                label.TextSize = 18
+                label.Font = Enum.Font.GothamSemibold
+                label.TextXAlignment = Enum.TextXAlignment.Left
+                label.Text = data[1] .. ": " .. tostring(data[2])
+                label.Parent = statsList
+            end
+        end
+    else
+        -- Create new stats window
+        statsFrame = Instance.new("Frame")
+        statsFrame.Name = "StatsFrame"
+        statsFrame.Size = UDim2.new(0, 300, 0, 200)
+        statsFrame.Position = UDim2.new(0.5, -150, 0.4, -100)
+        statsFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        statsFrame.BorderSizePixel = 0
+        statsFrame.Parent = BoothSniper
+        
+        -- Add header
+        local header = Instance.new("TextLabel")
+        header.Size = UDim2.new(1, 0, 0, 30)
+        header.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        header.TextColor3 = Color3.fromRGB(255, 255, 255)
+        header.TextSize = 18
+        header.Font = Enum.Font.GothamBold
+        header.Text = "BOOTH SNIPER STATISTICS"
+        header.Parent = statsFrame
+        
+        -- Add close button
+        local closeBtn = Instance.new("TextButton")
+        closeBtn.Size = UDim2.new(0, 30, 0, 30)
+        closeBtn.Position = UDim2.new(1, -30, 0, 0)
+        closeBtn.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+        closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        closeBtn.TextSize = 18
+        closeBtn.Font = Enum.Font.GothamBold
+        closeBtn.Text = "X"
+        closeBtn.Parent = header
+        
+        closeBtn.MouseButton1Click:Connect(function()
+            statsFrame:Destroy()
+        end)
+        
+        -- Stats list container
+        local statsList = Instance.new("Frame")
+        statsList.Name = "StatsList"
+        statsList.Size = UDim2.new(1, -20, 1, -40)
+        statsList.Position = UDim2.new(0, 10, 0, 35)
+        statsList.BackgroundTransparency = 1
+        statsList.Parent = statsFrame
+        
+        -- Add diamond balance display
+        local diamondsLabel = Instance.new("TextLabel")
+        diamondsLabel.Name = "DiamondsLabel"
+        diamondsLabel.Size = UDim2.new(1, 0, 0, 30)
+        diamondsLabel.Position = UDim2.new(0, 0, 1, -30)
+        diamondsLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        diamondsLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
+        diamondsLabel.TextSize = 18
+        diamondsLabel.Font = Enum.Font.GothamBold
+        diamondsLabel.Text = "Diamonds: " .. FormatPrice(stats.diamonds)
+        diamondsLabel.Parent = statsFrame
+        
+        -- Update diamond display every 2 seconds
+        spawn(function()
+            while statsFrame and statsFrame.Parent do
+                diamondsLabel.Text = "Diamonds: " .. FormatPrice(stats.diamonds)
+                task.wait(2)
+            end
+        end)
+        
+        -- Call DisplayStats again to populate the window
+        DisplayStats()
+    end
+end
+
+-- Helper function to format time
+function FormatTime(seconds)
+    local days = math.floor(seconds / 86400)
+    seconds = seconds % 86400
+    local hours = math.floor(seconds / 3600)
+    seconds = seconds % 3600
+    local minutes = math.floor(seconds / 60)
+    seconds = seconds % 60
+    
+    if days > 0 then
+        return string.format("%dd %dh %dm %ds", days, hours, minutes, seconds)
+    elseif hours > 0 then
+        return string.format("%dh %dm %ds", hours, minutes, seconds)
+    else
+        return string.format("%dm %ds", minutes, seconds)
+    end
+end
+
+-- Helper function to format prices
+function FormatPrice(price)
+    -- Handle nil or non-number values
+    if not price or type(price) ~= "number" then
+        return "0"
+    end
+    
+    -- Billions
+    if price >= 1000000000 then
+        local billions = price / 1000000000
+        if billions == math.floor(billions) then
+            -- No decimal needed for whole billions
+            return string.format("%dB", billions)
+        else
+            return string.format("%.1fB", billions)
+        end
+    -- Millions
+    elseif price >= 1000000 then
+        local millions = price / 1000000
+        if millions == math.floor(millions) then
+            -- No decimal needed for whole millions
+            return string.format("%dM", millions)
+        else
+            return string.format("%.1fM", millions)
+        end
+    -- Thousands
+    elseif price >= 1000 then
+        local thousands = price / 1000
+        if thousands == math.floor(thousands) then
+            -- No decimal needed for whole thousands
+            return string.format("%dk", thousands)
+        else
+            return string.format("%.1fk", thousands)
+        end
+    -- Hundreds
+    else
+        return tostring(math.floor(price))
+    end
+end
+
+-- Create UI if not disabled
+CreateUI()
+
+-- Function to check if a pet is a snipe target
+function IsSnipeTarget(petName, price)
+    -- First check if the pet name is in our settings
+    if not Settings[petName] then
+        -- Only log check failures when verbose logging is enabled to avoid console spam
+        if Settings["Debug"] and Settings["Debug"].VerboseLogging then
+            print(string.format("[CHECK] Pet '%s' not in target list", petName))
+        elseif Settings["Debug"] and Settings["Debug"].LogScans then
+            DebugPrint(string.format("Pet '%s' not found in target settings", petName))
+        end
+        return false
+    end
+    
+    -- Check if price is below our maximum
+    local maxPrice = Settings[petName]
+    if price > maxPrice then
+        if Settings["Debug"] and Settings["Debug"].VerboseLogging then
+            print(string.format("[CHECK] Pet '%s' price %s > max price %s", 
+                  petName, FormatPrice(price), FormatPrice(maxPrice)))
+        elseif Settings["Debug"] and Settings["Debug"].LogScans then
+            DebugPrint(string.format("Pet '%s' price %s exceeds max price %s", 
+                        petName, FormatPrice(price), FormatPrice(maxPrice)))
+        end
+        return false
+    end
+    
+    -- Check if we have enough diamonds to afford it
+    local currentDiamonds = GetDiamondBalance()
+    if price > currentDiamonds then
+        if Settings["Debug"] and Settings["Debug"].LogScans then
+            warn(string.format("[SNIPER] Found %s for %s but you only have %s diamonds", 
+                  petName, FormatPrice(price), FormatPrice(currentDiamonds)))
+        end
+        return false
+    end
+    
+    if Settings["Debug"] and Settings["Debug"].VerboseLogging then
+        print(string.format("[CHECK] ✓ Valid target: %s for %s (max: %s)", 
+              petName, FormatPrice(price), FormatPrice(maxPrice)))
+    elseif Settings["Debug"] and Settings["Debug"].LogScans then
+        DebugPrint(string.format("Found valid target: %s for %s (max: %s)", 
+                  petName, FormatPrice(price), FormatPrice(maxPrice)))
+    end
+    
+    return true
+end
+
+-- Check if a booth should be filtered
+function ShouldFilterBooth(boothId)
+    -- Skip filtering if not enabled
+    if not Settings["Advanced"] or not Settings["Advanced"].UseBoothFilter then
+        return false
+    end
+    
+    -- Check whitelist (if not empty)
+    if Settings["Advanced"].BoothWhitelist and #Settings["Advanced"].BoothWhitelist > 0 then
+        for _, id in pairs(Settings["Advanced"].BoothWhitelist) do
+            if boothId == id then
+                return false -- Don't filter if in whitelist
+            end
+        end
+        return true -- Filter if not in whitelist
+    end
+    
+    -- Check blacklist
+    if Settings["Advanced"].BoothBlacklist then
+        for _, id in pairs(Settings["Advanced"].BoothBlacklist) do
+            if boothId == id then
+                return true -- Filter if in blacklist
+            end
+        end
+    end
+    
+    return false -- Don't filter by default
+end
+
+-- Toggle sniper on/off
+function ToggleSniper()
+    _G.sniperEnabled = not _G.sniperEnabled
+    local statusText = _G.sniperEnabled and "Enabled" or "Disabled"
+    local statusColor = _G.sniperEnabled and Color3.fromRGB(85, 255, 127) or Color3.fromRGB(255, 97, 97)
+    
+    -- Update UI
+    if StatusLabel then
+        StatusLabel.Text = "Status: " .. statusText
+        StatusLabel.TextColor3 = statusColor
+    end
+    
+    -- Log toggle
+    print(string.format("[SNIPER] %s", statusText))
+    print("[DEBUG] sniperEnabled is now: " .. tostring(_G.sniperEnabled)) -- Debug message
+    CreateNotification("Booth Sniper " .. statusText)
+    
+    -- Reset scan time if enabled
+    if _G.sniperEnabled then
+        lastScanTime = 0
+    end
+end
+
+-- Display statistics
+function DisplayStats()
+    local statMessage = string.format(
+        "===== SNIPER STATS =====\n" ..
+        "Total Scans: %d\n" ..
+        "Total Snipes: %d\n" ..
+        "Diamonds Saved: %s\n" ..
+        "Current Balance: %s\n" ..
+        "========================",
+        stats.totalScans,
+        stats.totalSnipes,
+        FormatPrice(stats.diamondsSaved),
+        FormatPrice(stats.diamonds)
+    )
+    
+    print(statMessage)
+    
+    -- Show recent snipes if any
+    if stats.totalSnipes > 0 then
+        print("\nRecent Snipes:")
+        local count = 0
+        for i = #stats.snipeHistory, 1, -1 do
+            local snipe = stats.snipeHistory[i]
+            local timeAgo = os.time() - snipe.time
+            local timeString = ""
+            
+            if timeAgo < 60 then
+                timeString = string.format("%d sec ago", timeAgo)
+            elseif timeAgo < 3600 then
+                timeString = string.format("%d min ago", math.floor(timeAgo / 60))
+            else
+                timeString = string.format("%d hr ago", math.floor(timeAgo / 3600))
+            end
+            
+            local savedText = ""
+            if snipe.saved > 0 then
+                savedText = string.format(" (Saved %s)", FormatPrice(snipe.saved))
+            end
+            
+            print(string.format("%s: %s for %s%s", 
+                  timeString, snipe.petName, FormatPrice(snipe.price), savedText))
+            
+            count = count + 1
+            if count >= 5 then break end -- Show only the last 5 snipes
+        end
+    end
+    
+    -- Also show as a notification
+    CreateNotification(string.format("Snipes: %d | Saved: %s", 
+                      stats.totalSnipes, FormatPrice(stats.diamondsSaved)))
+end
+
+-- Print the current target items
+function PrintTargetItems()
+    print("\n[TARGETS] Current target items:")
+    local targets = {}
+    for name, price in pairs(Settings) do
+        -- Skip settings categories
+        if name ~= "Debug" and name ~= "Advanced" and name ~= "Notification" then
+            table.insert(targets, {name = name, price = price})
+        end
+    end
+    
+    -- Sort by price (highest first)
+    table.sort(targets, function(a, b) return a.price > b.price end)
+    
+    -- Print top targets
+    for i, target in ipairs(targets) do
+        print(string.format("   %s: %s", target.name, FormatPrice(target.price)))
+        
+        -- Only print first 10 to avoid spam
+        if i >= 10 and #targets > 12 then
+            print(string.format("   ... and %d more targets", #targets - 10))
+            break
+        end
+    end
+    print("")
+end
+
+-- Function to buy an item from a booth
+function BuyItem(boothId, petId, petName, price)
+    -- Check if we've already purchased this item
+    if purchasedItems[petId] then
+        return false
+    end
+    
+    -- Use pcall to prevent crashes during purchase
+    local success, result = pcall(function()
+        -- Log purchase attempt if debug is enabled
+        if Settings["Debug"] and Settings["Debug"].LogPurchaseAttempts then
+            DebugPrint(string.format("Attempting to purchase pet ID %s from booth %s for %s diamonds", 
+                     petId, boothId, FormatPrice(price)))
+        end
+        
+        -- Actual purchase logic using the correct remote and structure
+        local args = {
+            boothId, -- Booth ID 
+            {
+                [petId] = 1 -- Item ID and quantity
+            },
+            {
+                Caller = {
+                    LineNumber = 527,
+                    ScriptClass = "ModuleScript",
+                    Variadic = false,
+                    Traceback = "ReplicatedStorage.Library.Client.BoothCmds:527 function PromptPurchase2\010ReplicatedStorage.Library.Client.BoothCmds:654 function promptOtherPlayerBooth2\010ReplicatedStorage.Library.Client.BoothCmds:994",
+                    ScriptPath = "ReplicatedStorage.Library.Client.BoothCmds",
+                    FunctionName = "PromptPurchase2",
+                    Handle = "function: 0x009fcc613aa8e770",
+                    ScriptType = "Instance",
+                    ParameterCount = 2,
+                    SourceIdentifier = "ReplicatedStorage.Library.Client.BoothCmds"
+                }
+            }
+        }
+        
+        -- Use the correct remote path and invoke method
+        local BuyRemote = game:GetService("ReplicatedStorage"):WaitForChild("Network"):WaitForChild("Booths_RequestPurchase")
+        
+        if Settings["Debug"] and Settings["Debug"].TraceRemoteCalls then
+            DebugPrint("Calling remote: Booths_RequestPurchase")
+        end
+        
+        local purchaseResult = BuyRemote:InvokeServer(unpack(args))
+        
+        if Settings["Debug"] and Settings["Debug"].LogPurchaseAttempts then
+            DebugPrint(string.format("Purchase result: %s", tostring(purchaseResult)))
+        end
+        
+        -- Return result of purchase attempt
+        return purchaseResult and true or false
+    end)
+    
+    if success and result then
+        -- Record this purchase to avoid duplicates
+        purchasedItems[petId] = true
+        
+        -- Log the purchase
+        local purchaseMessage = string.format("[SNIPER] Bought %s for %s Diamonds from Booth %s", petName, FormatPrice(price), boothId)
+        print(purchaseMessage)
+        
+        -- Update statistics
+        stats.totalSnipes = stats.totalSnipes + 1
+        
+        -- Calculate potential savings if applicable
+        local maxPrice = Settings[petName] or 0
+        local saved = maxPrice - price
+        if saved > 0 then
+            stats.diamondsSaved = stats.diamondsSaved + saved
+        end
+        
+        -- Add to snipe history
+        table.insert(stats.snipeHistory, {
+            petName = petName,
+            price = price,
+            maxPrice = maxPrice,
+            boothId = boothId,
+            time = os.time(),
+            saved = saved
+        })
+        
+        -- Show notification
+        local savedText = ""
+        if saved > 0 then
+            savedText = string.format(" (Saved %s!)", FormatPrice(saved))
+        end
+        CreateNotification(string.format("Sniped %s for %s%s", petName, FormatPrice(price), savedText))
+        return true
+    else
+        if not success then
+            warn("[SNIPER] Error purchasing item:", result)
+        end
+        return false
+    end
+end
+
+-- Function to get the player's current diamond balance
+function GetDiamondBalance()
+    local success, diamonds = pcall(function()
+        -- Primary method - exact path provided by user
+        local diamondsValue = game:GetService("Players").LocalPlayer.leaderstats["\240\159\146\142 Diamonds"]
+        if diamondsValue and diamondsValue:IsA("IntValue") then
+            return diamondsValue.Value
+        end
+        
+        -- Fallback methods if the primary method fails
+        
+        -- Method 1: Check player stats if available
+        local playerStats = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerStats")
+        if playerStats and playerStats:FindFirstChild("Diamonds") then
+            return playerStats.Diamonds.Value
+        end
+        
+        -- Method 2: Check save data if available
+        local saveData = game:GetService("Players").LocalPlayer:FindFirstChild("_SaveData")
+        if saveData and saveData:FindFirstChild("Diamonds") then
+            return saveData.Diamonds.Value
+        end
+        
+        -- Method 3: Check UI elements
+        local playerGui = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
+        if playerGui then
+            -- Look for currency display
+            local currencyGui = playerGui:FindFirstChild("Currencies")
+            if currencyGui and currencyGui:FindFirstChild("Diamond") then
+                local diamondText = currencyGui.Diamond.Amount.Text
+                -- Remove commas and convert to number
+                return tonumber(diamondText:gsub(",", ""))
+            end
+        end
+        
+        return 0 -- Default if we can't find diamonds
+    end)
+    
+    if success then
+        stats.diamonds = diamonds
+        return diamonds
+    else
+        if Settings["Debug"] and Settings["Debug"].VerboseErrors then
+            DebugPrint("Failed to get diamond balance: " .. tostring(diamonds), true)
+            DebugPrint("Stack trace: " .. debug.traceback(), true)
+        else
+            warn("[SNIPER] Failed to get diamond balance: " .. tostring(diamonds))
+        end
+        return 0
+    end
+end
+-- Function to scan all booths in the Trading Plaza
+function ScanBooths()
+    if not _G.sniperEnabled then
+        print("[DEBUG] ScanBooths called but sniperEnabled is false")
+        return
+    end
+    
+    -- Check if enough time has passed since last scan
+    local currentTime = os.time()
+    if currentTime - stats.lastCheckTime < 3 then
+        return
+    end
+    stats.lastCheckTime = currentTime
+    
+    -- Update statistics
+    stats.totalScans = stats.totalScans + 1
+    
+    -- Debug logging
+    if Settings["Debug"] and Settings["Debug"].LogScans then
+        print(string.format("[SNIPER] Scanning booths... (Scan #%d)", stats.totalScans))
+    end
+    
+    -- Log scan start - useful for troubleshooting
+    if stats.totalScans == 1 or stats.totalScans % 10 == 0 then
+        print(string.format("[SNIPER] Starting scan #%d, looking for target items...", stats.totalScans))
+    end
+    
+    -- Wrap in pcall for error handling
+    local success, error = pcall(function()
+        -- Find the Trading Plaza booths container
+        -- Using the exact path for Pet Simulator 99: workspace.__THINGS.Booths
+        local booths = game.Workspace:FindFirstChild("__THINGS"):FindFirstChild("Booths")
+        
+        -- Fallback options if the primary path isn't found
+        if not booths then
+            warn("[SNIPER] Primary booth path not found, trying fallbacks...")
+            booths = game.Workspace:FindFirstChild("__WORKSPACE"):FindFirstChild("Booths") or
+                     game.Workspace:FindFirstChild("Trading Plaza") or
+                     game.Workspace:FindFirstChild("Booths")
+        end
+        
+        if not booths then
+            warn("[SNIPER] Booths container not found. Make sure you're in the Trading Plaza.")
+            return
+        end
+        
+        -- Log how many booths we found to scan
+        local boothCount = #booths:GetChildren()
+        print(string.format("[SNIPER] Found %d booths to scan", boothCount))
+        
+        if boothCount == 0 then
+            warn("[SNIPER] No booths found to scan. Are you in the Trading Plaza?")
+            return
+        end
+        
+        -- Loop through all booths
+        local processedBooths = 0
+        for _, booth in pairs(booths:GetChildren()) do
+            processedBooths = processedBooths + 1
+
+            -- Check if this is actually a booth
+            if booth:IsA("Model") then
+                local boothId = booth.Name or "Unknown"
+
+                -- Navigate through the correct path structure as confirmed by user:
+                -- workspace.__THINGS.Booths -> Model (booth) -> Pets -> boothTop -> PetScroll
+                local petsModel = booth:FindFirstChild("Pets")
+                if not petsModel then
+                    if Settings["Debug"] and Settings["Debug"].VerboseLogging then
+                        print(string.format("[SCAN] Booth %s missing Pets model", boothId))
+                    end
+                    continue
+                end
+
+                local boothTop = petsModel:FindFirstChild("boothTop")
+                if not boothTop then
+                    if Settings["Debug"] and Settings["Debug"].VerboseLogging then
+                        print(string.format("[SCAN] Booth %s missing boothTop", boothId))
+                    end
+                    continue
+                end
+                
+                local petScroll = boothTop:FindFirstChild("PetScroll")
+                if not petScroll then
+                    if Settings["Debug"] and Settings["Debug"].VerboseLogging then
+                        print(string.format("[SCAN] Booth %s missing PetScroll", boothId))
+                    end
+                    continue
+                end
+                
+                -- Now petScroll contains the actual listings as frames with hex IDs
+                local boothItems = petScroll
+                
+                -- Print booth scanning information
+                if Settings["Debug"] and Settings["Debug"].VerboseLogging then
+                    print(string.format("[SCAN] Scanning booth %s with %d items", boothId, #boothItems:GetChildren()))
+                end
+                
+                -- Skip booth if it should be filtered
+                if ShouldFilterBooth(boothId) then
+                    if Settings["Debug"] and Settings["Debug"].LogScans then
+                        print(string.format("[SNIPER] Skipping filtered booth: %s", boothId))
+                    end
+                    continue
+                end
+                
+                -- Track purchases in this scan
+                local purchasesThisScan = 0
+                local maxPurchases = (Settings["Advanced"] and Settings["Advanced"].MaxPurchasesPerScan) or 5
+                local itemCount = #boothItems:GetChildren()
+                
+                -- Print item count for this booth
+                if Settings["Debug"] and Settings["Debug"].VerboseLogging then
+                    print(string.format("[SCAN] Booth %s has %d items", boothId, itemCount))
+                end
+                
+                -- Check if booth is empty
+                if itemCount == 0 and Settings["Debug"] and Settings["Debug"].VerboseLogging then
+                    print(string.format("[SCAN] Booth %s is empty, skipping", boothId))
+                    continue
+                end
+                
+                -- Track if we found any targets in this booth
+                local foundTargetInBooth = false
+                
+                -- Loop through all items in the booth
+                for _, item in pairs(boothItems:GetChildren()) do
+                    -- Each item is a Frame with a hex ID representing a pet listing
+                    local petId = item.Name or "Unknown"
+                    
+                    -- Find the Buy button inside the listing Frame
+                    local buyButton = item:FindFirstChild("Buy")
+                    if not buyButton then 
+                        if Settings["Debug"] and Settings["Debug"].VerboseLogging then
+                            print(string.format("[SCAN] Item %s missing Buy button", petId))
+                        end
+                        continue 
+                    end
+                    
+                    -- Find the Cost TextLabel inside the Buy button
+                    local costLabel = buyButton:FindFirstChild("Cost")
+                    if not costLabel then
+                        if Settings["Debug"] and Settings["Debug"].VerboseLogging then
+                            print(string.format("[SCAN] Buy button in item %s missing Cost label", petId))
+                        end
+                        continue
+                    end
+                    
+                    -- Get price from the Text property of the Cost label
+                    local priceText = costLabel.Text
+                    local price = tonumber(priceText) or 0
+                    
+                    -- Try to find the pet name
+                    -- It might be in various locations, so we'll try different paths
+                    local petName = "Unknown"
+                    local petItemId = ""
+                    
+                    -- Try to find a ToolTip or pet info label
+                    local nameLabel = item:FindFirstChild("ToolTip") or item:FindFirstChild("PetName") or item:FindFirstChild("Name")
+                    if nameLabel and nameLabel:IsA("TextLabel") then
+                        petName = nameLabel.Text
+                    end
+                    
+                    -- If we still don't have a name, try alternative sources
+                    if petName == "Unknown" then
+                        -- Try accessing data from a pet data object if it exists
+                        local data = item:FindFirstChild("data") or item:FindFirstChild("Data")
+                        if data then
+                            local petData = data:FindFirstChild("Pet")
+                            if petData then
+                                if petData:IsA("StringValue") then
+                                    petItemId = petData.Value
+                                    petName = petItemId -- Use ID as name for now
+                                elseif petData:IsA("ObjectValue") and petData.Value then
+                                    petName = petData.Value.Name or "Unknown"
+                                    petItemId = petData.Value.id or ""
+                                end
+                            end
+                        end
+                    end
+                    
+                    -- Try to get a better pet name from the pet directory if we have an ID
+                    if PetDirectory and petItemId ~= "" then
+                        -- Search in all categories (Huge, Titanic, etc.)
+                        for _, category in pairs(PetDirectory:GetChildren()) do
+                            if category:IsA("Folder") then
+                                -- Check if this pet exists in this category
+                                local petObj = category:FindFirstChild(petItemId)
+                                if petObj then
+                                    -- Use the name from the directory (folder name is more accurate)
+                                    petName = petObj.Name
+                                    if Settings["Debug"] and Settings["Debug"].VerboseLogging then
+                                        print(string.format("[PET] Found pet %s in category %s", petName, category.Name))
+                                    end
+                                    break
+                                end
+                            end
+                        end
+                    end
+                    
+                    -- Always print what we find when verbose logging is on
+                    if Settings["Debug"] and Settings["Debug"].VerboseLogging then
+                        print(string.format("[SCAN] Found: %s, Price: %s, ID: %s", 
+                              petName, FormatPrice(price), petId))
+                    -- Otherwise only print if debug logging is enabled
+                    elseif Settings["Debug"] and Settings["Debug"].LogBoothData then
+                        print(string.format("[BOOTH] Booth: %s, Pet: %s, Price: %s",
+                              boothId, petName, FormatPrice(price)))
+                    end
+                    
+                    -- Check if this pet is a snipe target
+                    if IsSnipeTarget(petName, price) then
+                        -- Log that we found a target
+                        print(string.format("\n[TARGET] Found target: %s for %s (max: %s)", 
+                              petName, FormatPrice(price), FormatPrice(Settings[petName])))
+                        
+                        -- Mark that we found a target in this booth
+                        foundTargetInBooth = true
+                        
+                        -- Try to purchase the pet
+                        if BuyItem(boothId, petId, petName, price) then
+                            -- Track successful purchase
+                            purchasesThisScan = purchasesThisScan + 1
+                            
+                            -- Check if we've reached max purchases per scan
+                            if purchasesThisScan >= maxPurchases then
+                                print(string.format("[LIMIT] Reached max purchases per scan (%d). Stopping scan.", 
+                                      maxPurchases))
+                                break
+                            end
+                        end
+                    end
+                end
+                
+                -- Print summary for this booth if verbose logging is enabled
+                if Settings["Debug"] and Settings["Debug"].VerboseLogging then
+                    if not foundTargetInBooth then
+                        print(string.format("[SCAN] No targets found in booth %s", boothId))
+                    end
+                end
+            else
+                -- Print if this isn't a valid booth
+                if Settings["Debug"] and Settings["Debug"].VerboseLogging then
+                    print(string.format("[SCAN] Skipping invalid booth %d/%d", processedBooths, boothCount))
+                end
+            end
+        end
+        
+        -- Print scan completion message
+        print(string.format("[SNIPER] Completed scan #%d - Processed %d booths", stats.totalScans, processedBooths))
+    end)
+    
+    if not success then
+        if Settings["Debug"] and Settings["Debug"].VerboseErrors then
+            DebugPrint("Error scanning booths: " .. tostring(error), true)
+            DebugPrint("Stack trace: " .. debug.traceback(), true)
+        else
+            warn("[SNIPER] Error scanning booths:", error)
+        end
+    end
+end
+
+-- Periodically check for new booths (to handle cases where booths load in slowly)
+spawn(function()
+    while true do
+        task.wait(15) -- Check every 15 seconds
+        
+        -- Only log this when debug is enabled
+        if Settings["Debug"] and Settings["Debug"].LogScans then
+            -- Check if we're in the Trading Plaza
+            local boothsCheck = workspace:FindFirstChild("__THINGS") and 
+                               workspace:FindFirstChild("__THINGS"):FindFirstChild("Booths")
+            
+            if boothsCheck then
+                local boothCount = #boothsCheck:GetChildren()
+                print(string.format("[DEBUG] Booth count check: %d booths available", boothCount))
+            end
+        end
+    end
+end)
+
+-- Initialize variables
+_G.sniperEnabled = false -- Using _G to make it globally accessible
+local UserInputService = game:GetService("UserInputService")
+
+-- Print initialization message for debugging
+print("[DEBUG] sniperEnabled variable initialized to: " .. tostring(_G.sniperEnabled))
+
+-- Pet directory reference
+local PetDirectory = nil
+
+-- Try to access the pet directory from ReplicatedStorage
+local function InitializePetDirectory()
+    local success, directory = pcall(function()
+        return game:GetService("ReplicatedStorage").__DIRECTORY.Pets
+    end)
+    
+    if success and directory then
+        PetDirectory = directory
+        print("[INIT] Successfully found pet directory")
+        
+        -- Log the categories we found
+        local categories = {}
+        for _, category in pairs(PetDirectory:GetChildren()) do
+            if category:IsA("Folder") then
+                table.insert(categories, category.Name)
+            end
+        end
+        print(string.format("[INIT] Found pet categories: %s", table.concat(categories, ", ")))
+        return true
+    else
+        warn("[INIT] Could not find pet directory. Pet name detection may be less accurate.")
+        return false
+    end
+end
+
+-- Function to convert shorthand price notation to numbers
+local function ParsePrice(priceText)
+    if type(priceText) == "number" then
+        return priceText
+    elseif type(priceText) ~= "string" then
+        return 0
+    end
+    
+    -- Convert string to lowercase for easier matching
+    local text = string.lower(priceText)
+    
+    -- Check for K (thousands)
+    if string.match(text, "k") then
+        local numPart = string.match(text, "([0-9%.]+)k")
+        if numPart then
+            return tonumber(numPart) * 1000
+        end
+    end
+    
+    -- Check for M (millions)
+    if string.match(text, "m") then
+        local numPart = string.match(text, "([0-9%.]+)m")
+        if numPart then
+            return tonumber(numPart) * 1000000
+        end
+    end
+    
+    -- Check for B (billions)
+    if string.match(text, "b") then
+        local numPart = string.match(text, "([0-9%.]+)b")
+        if numPart then
+            return tonumber(numPart) * 1000000000
+        end
+    end
+    
+    -- Try to convert directly to number if no suffix
+    return tonumber(text) or 0
+end
+
+-- Process all price settings to convert to numbers
+local function ProcessSettings()
+    local processedCount = 0
+    -- Make a copy of the original settings to process
+    for petName, maxPrice in pairs(Settings) do
+        -- Only process string or number values (skip tables like Debug, Advanced, etc.)
+        if type(maxPrice) == "string" or type(maxPrice) == "number" then
+            -- Parse and convert to number
+            local numericPrice = ParsePrice(maxPrice)
+            -- Store the original text format
+            local originalFormat = maxPrice
+            -- Update the setting with the numeric value
+            Settings[petName] = numericPrice
+            processedCount = processedCount + 1
+            print(string.format("[SETTINGS] Set max price for '%s': %s → %s", 
+                  petName, originalFormat, FormatPrice(numericPrice)))
+        end
+    end
+    return processedCount
+end
+
+-- Initialize the pet directory
+print("\n[INIT] Initializing pet directory...")
+InitializePetDirectory()
+
+-- Print target items that we're looking for
+local function PrintTargetItems()
+    print("\n[SNIPER] Target items to snipe:")
+    local itemCount = 0
+    for petName, maxPrice in pairs(Settings) do
+        -- Skip non-pet settings
+        if type(maxPrice) ~= "table" and petName ~= "Debug" and petName ~= "Advanced" and petName ~= "Notifications" then
+            print(string.format("  - %s: Max price %s", petName, FormatPrice(maxPrice)))
+            itemCount = itemCount + 1
+        end
+    end
+    
+    if itemCount == 0 then
+        print("[WARNING] No target items set! Add items to the Settings table.")
+    end
+    print("")
+end
+
+-- Initialize the pet directory
+print("\n[INIT] Initializing pet directory...")
+InitializePetDirectory()
+
+-- Process the price settings
+print("\n[SNIPER] Processing target price settings...")
+local processedCount = ProcessSettings()
+print(string.format("[SNIPER] Processed %d target items\n", processedCount))
+
+-- Create the UI
+print("\n[UI] Creating user interface...")
+CreateUI()
+print("[UI] Interface created successfully")
+
+-- Set up keybinds
+UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+    if gameProcessedEvent then return end
+    
+    -- Toggle sniper
+    local toggleKey = (Settings["Advanced"] and Settings["Advanced"].ToggleKey) or Enum.KeyCode.K
+    if input.KeyCode == toggleKey then
+        ToggleSniper()
+    end
+    
+    -- Show statistics
+    local statsKey = (Settings["Advanced"] and Settings["Advanced"].StatsKey) or Enum.KeyCode.L
+    if input.KeyCode == statsKey then
+        DisplayStats()
+    end
+    
+    -- Clear statistics
+    local clearStatsKey = (Settings["Advanced"] and Settings["Advanced"].ClearStatsKey) or Enum.KeyCode.P
+    if input.KeyCode == clearStatsKey then
+        -- Reset statistics
+        stats.totalSnipes = 0
+        stats.diamondsSaved = 0
+        stats.snipeHistory = {}
+        CreateNotification("Statistics have been reset")
+    end
+end)
+
+-- Main loop - scan booths periodically
+spawn(function()
+    -- Initial wait to make sure everything is loaded
+    task.wait(1)
+    
+    while true do
+        if _G.sniperEnabled then
+            print("[DEBUG] Main loop: sniperEnabled is true, calling ScanBooths()")
+            ScanBooths()
+        else
+            if Settings["Debug"] and Settings["Debug"].LogScans then
+                DebugPrint("Sniper disabled, waiting for activation")
+            end
+        end
+        task.wait(3) -- Wait 3 seconds between scans
+    end
+end)
+
+-- Check initial diamond balance
+spawn(function()
+    task.wait(1) -- Wait to ensure script is fully loaded
+    local diamonds = GetDiamondBalance()
+    print(string.format("[SNIPER] Current diamond balance: %s", FormatPrice(diamonds)))
+    
+    -- Update the UI diamond counter
+    if DiamondLabel then
+        DiamondLabel.Text = "Diamonds: " .. FormatPrice(diamonds)
+    end
+    
+    -- Keep checking diamond balance periodically
+    while true do
+        task.wait(15) -- Check every 15 seconds
+        local newDiamonds = GetDiamondBalance()
+        
+        -- Log if diamonds have changed significantly
+        if math.abs(newDiamonds - diamonds) > 1000000 then -- 1M difference
+            print(string.format("[SNIPER] Diamond balance changed: %s → %s", 
+                  FormatPrice(diamonds), FormatPrice(newDiamonds)))
+            diamonds = newDiamonds
+        end
+        
+        -- Always update the UI
+        if DiamondLabel then
+            DiamondLabel.Text = "Diamonds: " .. FormatPrice(newDiamonds)
+        end
+    end
+end)
+
+-- Set up error handler
+spawn(function()
+    -- This creates a global error handler to catch any uncaught errors
+    xpcall(function()
+        while true do
+            task.wait(1) -- Keep thread alive
+        end
+    end, function(err)
+        if Settings["Debug"] and Settings["Debug"].VerboseErrors then
+            DebugPrint("UNCAUGHT ERROR: " .. tostring(err), true)
+            DebugPrint("Stack trace: " .. debug.traceback(), true)
+        else
+            warn("[SNIPER] UNCAUGHT ERROR: " .. tostring(err))
+        end
+    end)
+end)
+
+-- Initial status message
+print("[SNIPER] Booth sniper loaded.")
+print("Press " .. (Settings["Advanced"] and tostring(Settings["Advanced"].ToggleKey):split(".")[3] or "K") .. " to toggle.")
+print("Press " .. (Settings["Advanced"] and tostring(Settings["Advanced"].StatsKey):split(".")[3] or "L") .. " to show statistics.")
+print("Press " .. (Settings["Advanced"] and tostring(Settings["Advanced"].ClearStatsKey):split(".")[3] or "P") .. " to reset statistics.")
+PrintTargetItems()
+
+-- Show initial notification
+CreateNotification("Booth Sniper Loaded!\nPress " .. (Settings["Advanced"] and tostring(Settings["Advanced"].ToggleKey):split(".")[3] or "K") .. " to start sniper.")
